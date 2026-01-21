@@ -1,0 +1,202 @@
+import { Home, Tv, Film, PlayCircle, Heart, History, Settings, LogOut, Plus } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
+import { useStream } from '@/contexts/StreamContext';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+const mainNavItems = [
+  { title: 'Hem', url: '/browse', icon: Home },
+  { title: 'Live TV', url: '/live', icon: Tv },
+  { title: 'Filmer', url: '/movies', icon: Film },
+  { title: 'Serier', url: '/series', icon: PlayCircle },
+];
+
+const personalNavItems = [
+  { title: 'Favoriter', url: '/favorites', icon: Heart },
+  { title: 'Fortsätt titta', url: '/continue', icon: History },
+];
+
+export function AppSidebar() {
+  const { state } = useSidebar();
+  const location = useLocation();
+  const { profile, signOut } = useAuth();
+  const { sources, activeSource } = useStream();
+  const collapsed = state === 'collapsed';
+
+  const isActive = (path: string) => location.pathname === path;
+
+  return (
+    <Sidebar collapsible="icon" className="border-r border-border bg-sidebar-background">
+      <SidebarHeader className="p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+            <Tv className="h-6 w-6 text-primary-foreground" />
+          </div>
+          {!collapsed && (
+            <span className="font-display text-2xl tracking-wider text-foreground">
+              STREAMIFY
+            </span>
+          )}
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent>
+        {/* Stream Source Selector */}
+        {sources.length > 0 && !collapsed && (
+          <div className="px-4 py-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-start text-left">
+                  <span className="truncate">{activeSource?.name || 'Välj källa'}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {sources.map((source) => (
+                  <DropdownMenuItem key={source.id}>
+                    {source.name}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <NavLink to="/settings/sources" className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Lägg till källa
+                  </NavLink>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+
+        {/* No sources warning */}
+        {sources.length === 0 && !collapsed && (
+          <div className="px-4 py-2">
+            <NavLink to="/settings/sources">
+              <Button variant="outline" className="w-full gap-2">
+                <Plus className="h-4 w-4" />
+                Lägg till streamkälla
+              </Button>
+            </NavLink>
+          </div>
+        )}
+
+        {/* Main Navigation */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Utforska</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {mainNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    tooltip={item.title}
+                  >
+                    <NavLink to={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Personal */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Min lista</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {personalNavItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isActive(item.url)}
+                    tooltip={item.title}
+                  >
+                    <NavLink to={item.url}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.title}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter className="p-4">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={isActive('/settings')}
+              tooltip="Inställningar"
+            >
+              <NavLink to="/settings">
+                <Settings className="h-4 w-4" />
+                <span>Inställningar</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
+        {/* User Profile */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-3 px-2">
+              <Avatar className="h-8 w-8">
+                <AvatarImage src={profile?.avatar_url || undefined} />
+                <AvatarFallback className="bg-primary text-primary-foreground">
+                  {profile?.display_name?.charAt(0).toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              {!collapsed && (
+                <span className="truncate text-sm">
+                  {profile?.display_name || 'Användare'}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem asChild>
+              <NavLink to="/settings/profile" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Profil
+              </NavLink>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => signOut()} className="text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />
+              Logga ut
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
