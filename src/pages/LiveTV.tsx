@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LayoutGrid, List } from 'lucide-react';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
-import { ContentCard } from '@/components/content/ContentCard';
+import { ChannelCard } from '@/components/epg/ChannelCard';
+import { EPGDrawer } from '@/components/epg/EPGDrawer';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function LiveTV() {
@@ -17,6 +20,8 @@ export default function LiveTV() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<XtreamAPI.XtreamChannel | null>(null);
+  const [playingChannel, setPlayingChannel] = useState<XtreamAPI.XtreamChannel | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Fetch categories
   const { data: categories } = useQuery({
@@ -71,6 +76,11 @@ export default function LiveTV() {
     return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id);
   };
 
+  const handlePlayChannel = (channel: XtreamAPI.XtreamChannel) => {
+    setPlayingChannel(channel);
+    setSelectedChannel(null);
+  };
+
   if (!credentials) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -81,11 +91,26 @@ export default function LiveTV() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Live TV</h1>
-        <p className="text-muted-foreground">
-          {channels?.length || 0} kanaler tillgängliga
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Live TV</h1>
+          <p className="text-muted-foreground">
+            {channels?.length || 0} kanaler tillgängliga
+          </p>
+        </div>
+
+        <ToggleGroup
+          type="single"
+          value={viewMode}
+          onValueChange={(value) => value && setViewMode(value as 'grid' | 'list')}
+        >
+          <ToggleGroupItem value="grid" aria-label="Grid view">
+            <LayoutGrid className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="list" aria-label="List view">
+            <List className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -110,31 +135,85 @@ export default function LiveTV() {
         <div className="flex min-h-[40vh] items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      ) : viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filteredChannels.map((channel) => (
-            <ContentCard
+            <ChannelCard
               key={channel.stream_id}
-              id={String(channel.stream_id)}
-              title={channel.name}
-              poster={channel.stream_icon}
-              type="channel"
+              channel={channel}
+              credentials={credentials}
               isFavorite={isFavorite(activeSource!.id, 'channel', String(channel.stream_id))}
-              onPlay={() => setSelectedChannel(channel)}
+              onPlay={() => handlePlayChannel(channel)}
               onToggleFavorite={() => handleToggleFavorite(channel)}
             />
           ))}
         </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredChannels.map((channel) => (
+            <div
+              key={channel.stream_id}
+              className="flex cursor-pointer items-center gap-4 rounded-lg bg-card p-3 transition-colors hover:bg-card/80"
+              onClick={() => setSelectedChannel(channel)}
+            >
+              {/* Channel logo */}
+              <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-muted">
+                {channel.stream_icon ? (
+                  <img
+                    src={channel.stream_icon}
+                    alt={channel.name}
+                    className="h-full w-full object-contain p-1"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xl">
+                    📺
+                  </div>
+                )}
+              </div>
+
+              {/* Channel name */}
+              <div className="flex-1">
+                <h3 className="font-medium">{channel.name}</h3>
+              </div>
+
+              {/* Live badge */}
+              <span className="shrink-0 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
+                LIVE
+              </span>
+
+              {/* Play button */}
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePlayChannel(channel);
+                }}
+              >
+                Titta
+              </Button>
+            </div>
+          ))}
+        </div>
       )}
 
+      {/* EPG Drawer for channel details */}
+      <EPGDrawer
+        open={!!selectedChannel}
+        onOpenChange={() => setSelectedChannel(null)}
+        channel={selectedChannel}
+        credentials={credentials}
+        onPlay={() => selectedChannel && handlePlayChannel(selectedChannel)}
+      />
+
       {/* Video Player Dialog */}
-      <Dialog open={!!selectedChannel} onOpenChange={() => setSelectedChannel(null)}>
-        <DialogContent className="max-w-4xl p-0">
-          {selectedChannel && (
+      <Dialog open={!!playingChannel} onOpenChange={() => setPlayingChannel(null)}>
+        <DialogContent className="max-w-5xl p-0">
+          {playingChannel && (
             <VideoPlayer
-              src={getStreamUrl(selectedChannel)}
-              title={selectedChannel.name}
-              poster={selectedChannel.stream_icon}
+              src={getStreamUrl(playingChannel)}
+              title={playingChannel.name}
+              poster={playingChannel.stream_icon}
             />
           )}
         </DialogContent>
