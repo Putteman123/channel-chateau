@@ -1,4 +1,5 @@
 // Xtream Codes API Types and Functions
+import { supabase } from '@/integrations/supabase/client';
 
 export interface XtreamCredentials {
   serverUrl: string;
@@ -193,14 +194,36 @@ export function buildSeriesStreamUrl(creds: XtreamCredentials, episodeId: string
   return `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.${extension}`;
 }
 
+// Proxy API call through edge function to avoid CORS/Mixed Content issues
+async function proxyApiCall<T>(
+  creds: XtreamCredentials,
+  action?: string,
+  params?: Record<string, string | number>
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('xtream-proxy', {
+    body: {
+      serverUrl: creds.serverUrl,
+      username: creds.username,
+      password: creds.password,
+      action,
+      params,
+    },
+  });
+
+  if (error) {
+    throw new Error(`API call failed: ${error.message}`);
+  }
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  return data as T;
+}
+
 // Authenticate with Xtream Codes server
 export async function authenticate(creds: XtreamCredentials): Promise<XtreamAuthInfo> {
-  const url = buildApiUrl(creds);
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Authentication failed: ${response.statusText}`);
-  }
-  const data = await response.json();
+  const data = await proxyApiCall<XtreamAuthInfo>(creds);
   if (!data.user_info || data.user_info.auth !== 1) {
     throw new Error('Invalid credentials or account inactive');
   }
@@ -209,89 +232,43 @@ export async function authenticate(creds: XtreamCredentials): Promise<XtreamAuth
 
 // Get live TV categories
 export async function getLiveCategories(creds: XtreamCredentials): Promise<XtreamCategory[]> {
-  const url = buildApiUrl(creds, 'get_live_categories');
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get categories: ${response.statusText}`);
-  }
-  return response.json();
+  return proxyApiCall<XtreamCategory[]>(creds, 'get_live_categories');
 }
 
 // Get live channels
 export async function getLiveStreams(creds: XtreamCredentials, categoryId?: string): Promise<XtreamChannel[]> {
-  let url = buildApiUrl(creds, 'get_live_streams');
-  if (categoryId) {
-    url += `&category_id=${categoryId}`;
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get streams: ${response.statusText}`);
-  }
-  return response.json();
+  const params = categoryId ? { category_id: categoryId } : undefined;
+  return proxyApiCall<XtreamChannel[]>(creds, 'get_live_streams', params);
 }
 
 // Get VOD categories
 export async function getVodCategories(creds: XtreamCredentials): Promise<XtreamCategory[]> {
-  const url = buildApiUrl(creds, 'get_vod_categories');
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get VOD categories: ${response.statusText}`);
-  }
-  return response.json();
+  return proxyApiCall<XtreamCategory[]>(creds, 'get_vod_categories');
 }
 
 // Get VOD streams (movies)
 export async function getVodStreams(creds: XtreamCredentials, categoryId?: string): Promise<XtreamMovie[]> {
-  let url = buildApiUrl(creds, 'get_vod_streams');
-  if (categoryId) {
-    url += `&category_id=${categoryId}`;
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get VOD streams: ${response.statusText}`);
-  }
-  return response.json();
+  const params = categoryId ? { category_id: categoryId } : undefined;
+  return proxyApiCall<XtreamMovie[]>(creds, 'get_vod_streams', params);
 }
 
 // Get series categories
 export async function getSeriesCategories(creds: XtreamCredentials): Promise<XtreamCategory[]> {
-  const url = buildApiUrl(creds, 'get_series_categories');
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get series categories: ${response.statusText}`);
-  }
-  return response.json();
+  return proxyApiCall<XtreamCategory[]>(creds, 'get_series_categories');
 }
 
 // Get series list
 export async function getSeries(creds: XtreamCredentials, categoryId?: string): Promise<XtreamSeries[]> {
-  let url = buildApiUrl(creds, 'get_series');
-  if (categoryId) {
-    url += `&category_id=${categoryId}`;
-  }
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get series: ${response.statusText}`);
-  }
-  return response.json();
+  const params = categoryId ? { category_id: categoryId } : undefined;
+  return proxyApiCall<XtreamSeries[]>(creds, 'get_series', params);
 }
 
 // Get series info with episodes
 export async function getSeriesInfo(creds: XtreamCredentials, seriesId: number): Promise<XtreamSeriesInfo> {
-  const url = buildApiUrl(creds, 'get_series_info') + `&series_id=${seriesId}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get series info: ${response.statusText}`);
-  }
-  return response.json();
+  return proxyApiCall<XtreamSeriesInfo>(creds, 'get_series_info', { series_id: seriesId });
 }
 
 // Get EPG for a channel
 export async function getEPG(creds: XtreamCredentials, streamId: number): Promise<XtreamEPG> {
-  const url = buildApiUrl(creds, 'get_short_epg') + `&stream_id=${streamId}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to get EPG: ${response.statusText}`);
-  }
-  return response.json();
+  return proxyApiCall<XtreamEPG>(creds, 'get_short_epg', { stream_id: streamId });
 }
