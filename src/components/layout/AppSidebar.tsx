@@ -1,5 +1,6 @@
 import { Home, Tv, Film, PlayCircle, Heart, History, Settings, LogOut, Plus } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useStream } from '@/contexts/StreamContext';
 import {
@@ -13,7 +14,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -27,18 +27,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 const mainNavItems = [
-  { title: 'Hem', url: '/browse', icon: Home },
-  { title: 'Live TV', url: '/live', icon: Tv },
-  { title: 'Filmer', url: '/movies', icon: Film },
-  { title: 'Serier', url: '/series', icon: PlayCircle },
+  { titleKey: 'nav.browse', url: '/browse', icon: Home },
+  { titleKey: 'nav.liveTV', url: '/live', icon: Tv },
+  { titleKey: 'nav.movies', url: '/movies', icon: Film },
+  { titleKey: 'nav.series', url: '/series', icon: PlayCircle },
 ];
 
 const personalNavItems = [
-  { title: 'Favoriter', url: '/favorites', icon: Heart },
-  { title: 'Fortsätt titta', url: '/continue', icon: History },
+  { titleKey: 'nav.favorites', url: '/favorites', icon: Heart },
+  { titleKey: 'nav.continueWatching', url: '/continue', icon: History },
 ];
 
 export function AppSidebar() {
+  const { t } = useTranslation();
   const { state } = useSidebar();
   const location = useLocation();
   const { profile, signOut } = useAuth();
@@ -69,7 +70,7 @@ export function AppSidebar() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="w-full justify-start text-left">
-                  <span className="truncate">{activeSource?.name || 'Välj källa'}</span>
+                  <span className="truncate">{activeSource?.name || t('settings.sources.noSources')}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -82,7 +83,7 @@ export function AppSidebar() {
                 <DropdownMenuItem asChild>
                   <NavLink to="/settings/sources" className="flex items-center gap-2">
                     <Plus className="h-4 w-4" />
-                    Lägg till källa
+                    {t('settings.sources.addSource')}
                   </NavLink>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -96,7 +97,7 @@ export function AppSidebar() {
             <NavLink to="/settings/sources">
               <Button variant="outline" className="w-full gap-2">
                 <Plus className="h-4 w-4" />
-                Lägg till streamkälla
+                {t('browse.addSource')}
               </Button>
             </NavLink>
           </div>
@@ -104,19 +105,19 @@ export function AppSidebar() {
 
         {/* Main Navigation */}
         <SidebarGroup>
-          <SidebarGroupLabel>Utforska</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('nav.browse')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.titleKey}>
                   <SidebarMenuButton
                     asChild
                     isActive={isActive(item.url)}
-                    tooltip={item.title}
+                    tooltip={t(item.titleKey)}
                   >
                     <NavLink to={item.url}>
                       <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <span>{t(item.titleKey)}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -127,19 +128,19 @@ export function AppSidebar() {
 
         {/* Personal */}
         <SidebarGroup>
-          <SidebarGroupLabel>Min lista</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('favorites.title')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {personalNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.titleKey}>
                   <SidebarMenuButton
                     asChild
                     isActive={isActive(item.url)}
-                    tooltip={item.title}
+                    tooltip={t(item.titleKey)}
                   >
                     <NavLink to={item.url}>
                       <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
+                      <span>{t(item.titleKey)}</span>
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -155,11 +156,11 @@ export function AppSidebar() {
             <SidebarMenuButton
               asChild
               isActive={isActive('/settings')}
-              tooltip="Inställningar"
+              tooltip={t('nav.settings')}
             >
               <NavLink to="/settings">
                 <Settings className="h-4 w-4" />
-                <span>Inställningar</span>
+                <span>{t('nav.settings')}</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -177,7 +178,7 @@ export function AppSidebar() {
               </Avatar>
               {!collapsed && (
                 <span className="truncate text-sm">
-                  {profile?.display_name || 'Användare'}
+                  {profile?.display_name || t('common.unknown')}
                 </span>
               )}
             </Button>
@@ -186,13 +187,13 @@ export function AppSidebar() {
             <DropdownMenuItem asChild>
               <NavLink to="/settings/profile" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
-                Profil
+                {t('nav.profile')}
               </NavLink>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => signOut()} className="text-destructive">
               <LogOut className="mr-2 h-4 w-4" />
-              Logga ut
+              {t('auth.logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

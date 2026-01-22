@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { ContentCard } from '@/components/content/ContentCard';
@@ -6,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Heart } from 'lucide-react';
 
 export default function Favorites() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { activeSource } = useStream();
   const { favorites, removeFavorite } = useFavorites(activeSource?.id);
@@ -27,9 +29,9 @@ export default function Favorites() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
         <Heart className="h-16 w-16 text-muted-foreground/50" />
-        <h2 className="mt-4 text-xl font-semibold">Inga favoriter ännu</h2>
+        <h2 className="mt-4 text-xl font-semibold">{t('favorites.noFavorites')}</h2>
         <p className="mt-2 text-muted-foreground">
-          Lägg till kanaler, filmer och serier i dina favoriter för snabb åtkomst.
+          {t('favorites.noFavoritesDesc')}
         </p>
       </div>
     );
@@ -38,18 +40,18 @@ export default function Favorites() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Mina favoriter</h1>
+        <h1 className="text-3xl font-bold">{t('favorites.title')}</h1>
         <p className="text-muted-foreground">
-          {favorites.length} objekt sparade
+          {t('favorites.itemsSaved', { count: favorites.length })}
         </p>
       </div>
 
       <Tabs defaultValue="all">
         <TabsList>
-          <TabsTrigger value="all">Alla ({favorites.length})</TabsTrigger>
-          <TabsTrigger value="channels">Kanaler ({channels.length})</TabsTrigger>
-          <TabsTrigger value="movies">Filmer ({movies.length})</TabsTrigger>
-          <TabsTrigger value="series">Serier ({series.length})</TabsTrigger>
+          <TabsTrigger value="all">{t('common.all')} ({favorites.length})</TabsTrigger>
+          <TabsTrigger value="channels">{t('favorites.channels')} ({channels.length})</TabsTrigger>
+          <TabsTrigger value="movies">{t('favorites.movies')} ({movies.length})</TabsTrigger>
+          <TabsTrigger value="series">{t('favorites.series')} ({series.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-6">
@@ -58,7 +60,7 @@ export default function Favorites() {
               <ContentCard
                 key={fav.id}
                 id={fav.item_id}
-                title={fav.item_name || 'Okänd'}
+                title={fav.item_name || t('common.unknown')}
                 poster={fav.item_poster || undefined}
                 type={fav.item_type}
                 isFavorite={true}
@@ -79,7 +81,7 @@ export default function Favorites() {
               <ContentCard
                 key={fav.id}
                 id={fav.item_id}
-                title={fav.item_name || 'Okänd'}
+                title={fav.item_name || t('common.unknown')}
                 poster={fav.item_poster || undefined}
                 type="channel"
                 isFavorite={true}
@@ -95,7 +97,7 @@ export default function Favorites() {
               <ContentCard
                 key={fav.id}
                 id={fav.item_id}
-                title={fav.item_name || 'Okänd'}
+                title={fav.item_name || t('common.unknown')}
                 poster={fav.item_poster || undefined}
                 type="movie"
                 isFavorite={true}
@@ -111,7 +113,7 @@ export default function Favorites() {
               <ContentCard
                 key={fav.id}
                 id={fav.item_id}
-                title={fav.item_name || 'Okänd'}
+                title={fav.item_name || t('common.unknown')}
                 poster={fav.item_poster || undefined}
                 type="series"
                 isFavorite={true}

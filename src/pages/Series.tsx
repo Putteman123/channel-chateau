@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStream } from '@/contexts/StreamContext';
@@ -10,6 +11,7 @@ import { SearchBar } from '@/components/content/SearchBar';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Series() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { activeSource, credentials } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
@@ -68,7 +70,7 @@ export default function Series() {
   if (!credentials) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-muted-foreground">Ingen streamkälla vald</p>
+        <p className="text-muted-foreground">{t('series.noSource')}</p>
       </div>
     );
   }
@@ -76,9 +78,9 @@ export default function Series() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Serier</h1>
+        <h1 className="text-3xl font-bold">{t('series.title')}</h1>
         <p className="text-muted-foreground">
-          {series?.length || 0} serier tillgängliga
+          {t('series.seriesAvailable', { count: series?.length || 0 })}
         </p>
       </div>
 
@@ -87,7 +89,7 @@ export default function Series() {
           <SearchBar
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Sök serier..."
+            placeholder={t('series.searchSeries')}
           />
         </div>
       </div>

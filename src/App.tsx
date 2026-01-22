@@ -20,6 +20,7 @@ import ContinueWatching from "./pages/ContinueWatching";
 import Settings from "./pages/Settings";
 import Profile from "./pages/settings/Profile";
 import Sources from "./pages/settings/Sources";
+import Language from "./pages/settings/Language";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
                 <Route index element={<Profile />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="sources" element={<Sources />} />
+                <Route path="language" element={<Language />} />
               </Route>
             </Route>
             

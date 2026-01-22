@@ -1,13 +1,16 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { User, Wifi, Palette } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { User, Wifi, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const settingsLinks = [
-  { title: 'Profil', url: '/settings/profile', icon: User },
-  { title: 'Streamkällor', url: '/settings/sources', icon: Wifi },
+  { titleKey: 'nav.profile', url: '/settings/profile', icon: User },
+  { titleKey: 'nav.sources', url: '/settings/sources', icon: Wifi },
+  { titleKey: 'nav.language', url: '/settings/language', icon: Globe },
 ];
 
 export default function Settings() {
+  const { t } = useTranslation();
   const location = useLocation();
   
   // If we're at /settings, redirect to profile
@@ -17,7 +20,7 @@ export default function Settings() {
     <div className="flex flex-col gap-8 md:flex-row">
       {/* Settings Navigation */}
       <nav className="shrink-0 md:w-48">
-        <h1 className="mb-4 text-2xl font-bold">Inställningar</h1>
+        <h1 className="mb-4 text-2xl font-bold">{t('settings.title')}</h1>
         <div className="flex flex-row gap-2 md:flex-col">
           {settingsLinks.map((link) => (
             <NavLink
@@ -33,7 +36,7 @@ export default function Settings() {
               }
             >
               <link.icon className="h-4 w-4" />
-              {link.title}
+              {t(link.titleKey)}
             </NavLink>
           ))}
         </div>

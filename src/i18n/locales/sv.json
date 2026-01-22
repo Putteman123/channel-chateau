@@ -1,0 +1,169 @@
+{
+  "common": {
+    "loading": "Laddar...",
+    "error": "Ett fel uppstod",
+    "save": "Spara",
+    "cancel": "Avbryt",
+    "delete": "Ta bort",
+    "edit": "Redigera",
+    "add": "Lägg till",
+    "search": "Sök",
+    "all": "Alla",
+    "back": "Tillbaka",
+    "close": "Stäng",
+    "confirm": "Bekräfta",
+    "unknown": "Okänd",
+    "noResults": "Inga resultat",
+    "viewAll": "Visa alla"
+  },
+  "auth": {
+    "login": "Logga in",
+    "register": "Registrera",
+    "logout": "Logga ut",
+    "email": "E-post",
+    "password": "Lösenord",
+    "confirmPassword": "Bekräfta lösenord",
+    "displayName": "Visningsnamn",
+    "forgotPassword": "Glömt lösenord?",
+    "noAccount": "Har du inget konto?",
+    "hasAccount": "Har du redan ett konto?",
+    "loginSuccess": "Inloggning lyckades!",
+    "registerSuccess": "Registrering lyckades! Kontrollera din e-post.",
+    "loginError": "Inloggning misslyckades",
+    "registerError": "Registrering misslyckades",
+    "emailRequired": "E-post krävs",
+    "emailInvalid": "Ogiltig e-postadress",
+    "passwordRequired": "Lösenord krävs",
+    "passwordMin": "Lösenordet måste vara minst 6 tecken",
+    "passwordsNoMatch": "Lösenorden matchar inte",
+    "displayNameRequired": "Visningsnamn krävs",
+    "displayNameMin": "Visningsnamnet måste vara minst 2 tecken",
+    "displayNameMax": "Visningsnamnet får vara max 50 tecken"
+  },
+  "nav": {
+    "browse": "Utforska",
+    "liveTV": "Live TV",
+    "movies": "Filmer",
+    "series": "Serier",
+    "favorites": "Favoriter",
+    "continueWatching": "Fortsätt titta",
+    "settings": "Inställningar",
+    "profile": "Profil",
+    "sources": "Streamkällor",
+    "language": "Språk"
+  },
+  "browse": {
+    "title": "Utforska",
+    "noSources": "Ingen streamkälla konfigurerad",
+    "noSourcesDesc": "Lägg till en streamkälla i inställningarna för att börja titta.",
+    "addSource": "Lägg till streamkälla",
+    "continueWatching": "Fortsätt titta",
+    "favorites": "Mina favoriter",
+    "liveTV": "Live TV",
+    "movies": "Filmer",
+    "series": "Serier"
+  },
+  "liveTV": {
+    "title": "Live TV",
+    "channelsAvailable": "{{count}} kanaler tillgängliga",
+    "searchChannels": "Sök kanaler...",
+    "watch": "Titta",
+    "noChannels": "Inga kanaler hittades",
+    "noSource": "Ingen streamkälla vald"
+  },
+  "movies": {
+    "title": "Filmer",
+    "moviesAvailable": "{{count}} filmer tillgängliga",
+    "searchMovies": "Sök filmer...",
+    "noMovies": "Inga filmer hittades",
+    "noSource": "Ingen streamkälla vald"
+  },
+  "series": {
+    "title": "Serier",
+    "seriesAvailable": "{{count}} serier tillgängliga",
+    "searchSeries": "Sök serier...",
+    "noSeries": "Inga serier hittades",
+    "noSource": "Ingen streamkälla vald",
+    "season": "Säsong {{number}}",
+    "episode": "Avsnitt {{number}}",
+    "episodes": "{{count}} avsnitt",
+    "selectSeason": "Välj säsong"
+  },
+  "favorites": {
+    "title": "Mina favoriter",
+    "itemsSaved": "{{count}} objekt sparade",
+    "noFavorites": "Inga favoriter ännu",
+    "noFavoritesDesc": "Lägg till kanaler, filmer och serier i dina favoriter för snabb åtkomst.",
+    "channels": "Kanaler",
+    "movies": "Filmer",
+    "series": "Serier"
+  },
+  "continueWatching": {
+    "title": "Fortsätt titta",
+    "itemsStarted": "{{count}} objekt påbörjade",
+    "noItems": "Inget att fortsätta titta på",
+    "noItemsDesc": "Börja titta på något för att se det här.",
+    "clearHistory": "Rensa historik",
+    "clearHistoryTitle": "Rensa tittarhistorik?",
+    "clearHistoryDesc": "Detta tar bort all din tittarhistorik permanent. Denna åtgärd kan inte ångras.",
+    "watchHistory": "Tittarhistorik"
+  },
+  "settings": {
+    "title": "Inställningar",
+    "profile": {
+      "title": "Profil",
+      "displayName": "Visningsnamn",
+      "email": "E-post",
+      "saveChanges": "Spara ändringar",
+      "saving": "Sparar...",
+      "saved": "Profil uppdaterad!",
+      "error": "Kunde inte uppdatera profil"
+    },
+    "sources": {
+      "title": "Streamkällor",
+      "description": "Hantera dina IPTV-anslutningar",
+      "addSource": "Lägg till källa",
+      "editSource": "Redigera källa",
+      "deleteSource": "Ta bort källa",
+      "noSources": "Inga källor tillagda",
+      "noSourcesDesc": "Lägg till en Xtream Codes-källa för att börja strömma.",
+      "name": "Namn",
+      "serverUrl": "Server-URL",
+      "username": "Användarnamn",
+      "password": "Lösenord",
+      "testConnection": "Testa anslutning",
+      "testing": "Testar...",
+      "connectionSuccess": "Anslutningen lyckades!",
+      "connectionError": "Anslutningen misslyckades",
+      "setActive": "Sätt som aktiv",
+      "active": "Aktiv",
+      "lastSynced": "Senast synkad",
+      "deleteConfirm": "Är du säker på att du vill ta bort denna källa?",
+      "deleteConfirmDesc": "Detta tar bort alla favoriter och historik kopplad till denna källa."
+    },
+    "language": {
+      "title": "Språk",
+      "description": "Välj ditt föredragna språk",
+      "swedish": "Svenska",
+      "english": "English"
+    }
+  },
+  "epg": {
+    "live": "LIVE",
+    "now": "Nu",
+    "next": "Nästa",
+    "upcoming": "Kommande program",
+    "noPrograms": "Ingen programinformation tillgänglig",
+    "programGuide": "Programguide"
+  },
+  "player": {
+    "play": "Spela",
+    "pause": "Pausa",
+    "mute": "Ljud av",
+    "unmute": "Ljud på",
+    "fullscreen": "Helskärm",
+    "exitFullscreen": "Avsluta helskärm",
+    "loading": "Laddar video...",
+    "error": "Kunde inte ladda videon"
+  }
+}

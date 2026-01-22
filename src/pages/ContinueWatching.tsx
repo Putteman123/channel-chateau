@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { History, Trash2 } from 'lucide-react';
 import { useStream } from '@/contexts/StreamContext';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function ContinueWatching() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { activeSource } = useStream();
   const { continueWatching, history, clearHistory, getProgress } = useWatchHistory(activeSource?.id);
@@ -25,9 +27,9 @@ export default function ContinueWatching() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
         <History className="h-16 w-16 text-muted-foreground/50" />
-        <h2 className="mt-4 text-xl font-semibold">Inget att fortsätta titta på</h2>
+        <h2 className="mt-4 text-xl font-semibold">{t('continueWatching.noItems')}</h2>
         <p className="mt-2 text-muted-foreground">
-          Börja titta på något för att se det här.
+          {t('continueWatching.noItemsDesc')}
         </p>
       </div>
     );
@@ -37,9 +39,9 @@ export default function ContinueWatching() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Fortsätt titta</h1>
+          <h1 className="text-3xl font-bold">{t('continueWatching.title')}</h1>
           <p className="text-muted-foreground">
-            {continueWatching.length} objekt påbörjade
+            {t('continueWatching.itemsStarted', { count: continueWatching.length })}
           </p>
         </div>
 
@@ -47,20 +49,20 @@ export default function ContinueWatching() {
           <AlertDialogTrigger asChild>
             <Button variant="outline" className="gap-2">
               <Trash2 className="h-4 w-4" />
-              Rensa historik
+              {t('continueWatching.clearHistory')}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Rensa tittarhistorik?</AlertDialogTitle>
+              <AlertDialogTitle>{t('continueWatching.clearHistoryTitle')}</AlertDialogTitle>
               <AlertDialogDescription>
-                Detta tar bort all din tittarhistorik permanent. Denna åtgärd kan inte ångras.
+                {t('continueWatching.clearHistoryDesc')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Avbryt</AlertDialogCancel>
+              <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
               <AlertDialogAction onClick={() => clearHistory.mutate()}>
-                Rensa
+                {t('common.delete')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -69,10 +71,10 @@ export default function ContinueWatching() {
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {continueWatching.map((item) => (
-          <ContentCard
-            key={item.id}
-            id={item.item_id}
-            title={item.item_name || 'Okänd'}
+            <ContentCard
+              key={item.id}
+              id={item.item_id}
+              title={item.item_name || t('common.unknown')}
             poster={item.item_poster || undefined}
             type={item.item_type === 'episode' ? 'series' : item.item_type as 'channel' | 'movie' | 'series'}
             progress={getProgress(item.stream_source_id, item.item_type, item.item_id)}
@@ -88,7 +90,7 @@ export default function ContinueWatching() {
       {/* Full History */}
       {history.length > continueWatching.length && (
         <div className="mt-12">
-          <h2 className="mb-4 text-xl font-semibold">Tittarhistorik</h2>
+          <h2 className="mb-4 text-xl font-semibold">{t('continueWatching.watchHistory')}</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {history
               .filter((h) => !continueWatching.some((c) => c.id === h.id))
@@ -97,7 +99,7 @@ export default function ContinueWatching() {
                 <ContentCard
                   key={item.id}
                   id={item.item_id}
-                  title={item.item_name || 'Okänd'}
+                  title={item.item_name || t('common.unknown')}
                   poster={item.item_poster || undefined}
                   type={item.item_type === 'episode' ? 'series' : item.item_type as 'channel' | 'movie' | 'series'}
                   progress={100}
