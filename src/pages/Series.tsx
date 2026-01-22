@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { ContentCard } from '@/components/content/ContentCard';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
+import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Series() {
@@ -103,9 +103,7 @@ export default function Series() {
       )}
 
       {isLoading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <ContentSkeleton count={12} />
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {filteredSeries.map((s) => (
