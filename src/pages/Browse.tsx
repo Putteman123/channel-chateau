@@ -1,16 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useFavorites } from '@/hooks/useFavorites';
 import { ContentCard } from '@/components/content/ContentCard';
 import { ContentRow } from '@/components/content/ContentRow';
+import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Browse() {
+  const { t } = useTranslation();
   const { activeSource, credentials, sources } = useStream();
   const { continueWatching, getProgress } = useWatchHistory(activeSource?.id);
   const { favorites, isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
@@ -70,16 +73,16 @@ export default function Browse() {
       <div className="flex min-h-[60vh] items-center justify-center">
         <Card className="max-w-md text-center">
           <CardHeader>
-            <CardTitle>Välkommen till Streamify!</CardTitle>
+            <CardTitle>{t('browse.noSources')}</CardTitle>
             <CardDescription>
-              Lägg till en streamkälla för att börja titta på Live TV, filmer och serier.
+              {t('browse.noSourcesDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link to="/settings/sources">
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
-                Lägg till streamkälla
+                {t('browse.addSource')}
               </Button>
             </Link>
           </CardContent>
@@ -91,26 +94,19 @@ export default function Browse() {
   const isLoading = loadingChannels || loadingMovies || loadingSeries;
 
   if (isLoading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
-          <p className="mt-4 text-muted-foreground">Laddar innehåll...</p>
-        </div>
-      </div>
-    );
+    return <ContentSkeleton type="row" />;
   }
 
   return (
     <div className="space-y-8">
       {/* Continue Watching */}
       {continueWatching.length > 0 && (
-        <ContentRow title="Fortsätt titta">
+        <ContentRow title={t('browse.continueWatching')}>
           {continueWatching.slice(0, 10).map((item) => (
             <div key={item.id} className="w-[150px] shrink-0">
               <ContentCard
                 id={item.item_id}
-                title={item.item_name || 'Okänd'}
+                title={item.item_name || t('common.unknown')}
                 poster={item.item_poster || undefined}
                 type={item.item_type === 'episode' ? 'series' : item.item_type as 'channel' | 'movie' | 'series'}
                 progress={getProgress(item.stream_source_id, item.item_type, item.item_id)}
@@ -122,12 +118,12 @@ export default function Browse() {
 
       {/* Favorites */}
       {favorites.length > 0 && (
-        <ContentRow title="Mina favoriter">
+        <ContentRow title={t('browse.favorites')}>
           {favorites.slice(0, 10).map((fav) => (
             <div key={fav.id} className="w-[150px] shrink-0">
               <ContentCard
                 id={fav.item_id}
-                title={fav.item_name || 'Okänd'}
+                title={fav.item_name || t('common.unknown')}
                 poster={fav.item_poster || undefined}
                 type={fav.item_type}
                 isFavorite={true}
@@ -140,7 +136,7 @@ export default function Browse() {
 
       {/* Live TV */}
       {liveChannels && liveChannels.length > 0 && (
-        <ContentRow title="Live TV" viewAllLink="/live">
+        <ContentRow title={t('browse.liveTV')} viewAllLink="/live">
           {liveChannels.slice(0, 15).map((channel) => (
             <div key={channel.stream_id} className="w-[150px] shrink-0">
               <ContentCard
@@ -158,7 +154,7 @@ export default function Browse() {
 
       {/* Movies */}
       {movies && movies.length > 0 && (
-        <ContentRow title="Populära filmer" viewAllLink="/movies">
+        <ContentRow title={t('browse.movies')} viewAllLink="/movies">
           {movies.slice(0, 15).map((movie) => (
             <div key={movie.stream_id} className="w-[150px] shrink-0">
               <ContentCard
@@ -177,7 +173,7 @@ export default function Browse() {
 
       {/* Series */}
       {series && series.length > 0 && (
-        <ContentRow title="Populära serier" viewAllLink="/series">
+        <ContentRow title={t('browse.series')} viewAllLink="/series">
           {series.slice(0, 15).map((s) => (
             <div key={s.series_id} className="w-[150px] shrink-0">
               <ContentCard

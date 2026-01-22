@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Hls from 'hls.js';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward, Settings } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { cn } from '@/lib/utils';
 
-interface VideoPlayerProps {
+export interface VideoPlayerProps {
   src: string;
   poster?: string;
   title?: string;
   onProgress?: (currentTime: number, duration: number) => void;
   onEnded?: () => void;
+  onClose?: () => void;
   startPosition?: number;
   autoPlay?: boolean;
 }
@@ -21,6 +22,7 @@ export function VideoPlayer({
   title,
   onProgress,
   onEnded,
+  onClose,
   startPosition = 0,
   autoPlay = true,
 }: VideoPlayerProps) {
@@ -257,10 +259,22 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Title overlay */}
-      {title && showControls && (
+      {/* Title overlay with close button */}
+      {showControls && (
         <div className="absolute left-0 right-0 top-0 bg-gradient-to-b from-black/80 to-transparent p-4">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <div className="flex items-center justify-between">
+            {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="text-white hover:bg-white/20"
+              >
+                <X className="h-6 w-6" />
+              </Button>
+            )}
+          </div>
         </div>
       )}
 

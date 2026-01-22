@@ -1,20 +1,24 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
+import { useOrientation } from '@/hooks/useOrientation';
 import { ContentCard } from '@/components/content/ContentCard';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
+import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Movies() {
+  const { t } = useTranslation();
   const { activeSource, credentials } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { updateHistory, getProgress } = useWatchHistory(activeSource?.id);
+  const { isLandscapeMobile } = useOrientation();
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,7 +97,7 @@ export default function Movies() {
   if (!credentials) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-muted-foreground">Ingen streamkälla vald</p>
+        <p className="text-muted-foreground">{t('movies.noSource')}</p>
       </div>
     );
   }
@@ -101,9 +105,9 @@ export default function Movies() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Filmer</h1>
+        <h1 className="text-3xl font-bold">{t('movies.title')}</h1>
         <p className="text-muted-foreground">
-          {movies?.length || 0} filmer tillgängliga
+          {t('movies.moviesAvailable', { count: movies?.length || 0 })}
         </p>
       </div>
 
@@ -112,7 +116,7 @@ export default function Movies() {
           <SearchBar
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder="Sök filmer..."
+            placeholder={t('movies.searchMovies')}
           />
         </div>
       </div>
@@ -126,9 +130,7 @@ export default function Movies() {
       )}
 
       {isLoading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
+        <ContentSkeleton count={12} />
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {filteredMovies.map((movie) => (
@@ -148,19 +150,31 @@ export default function Movies() {
         </div>
       )}
 
-      {/* Video Player Dialog */}
-      <Dialog open={!!selectedMovie} onOpenChange={() => setSelectedMovie(null)}>
-        <DialogContent className="max-w-4xl p-0">
-          {selectedMovie && (
-            <VideoPlayer
-              src={getStreamUrl(selectedMovie)}
-              title={selectedMovie.name}
-              poster={selectedMovie.stream_icon}
-              onProgress={handleProgress}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Video Player - Fullscreen in landscape mobile, Dialog otherwise */}
+      {isLandscapeMobile && selectedMovie ? (
+        <div className="fixed inset-0 z-50 bg-black">
+          <VideoPlayer
+            src={getStreamUrl(selectedMovie)}
+            title={selectedMovie.name}
+            poster={selectedMovie.stream_icon}
+            onProgress={handleProgress}
+            onClose={() => setSelectedMovie(null)}
+          />
+        </div>
+      ) : (
+        <Dialog open={!!selectedMovie} onOpenChange={() => setSelectedMovie(null)}>
+          <DialogContent className="max-w-4xl p-0">
+            {selectedMovie && (
+              <VideoPlayer
+                src={getStreamUrl(selectedMovie)}
+                title={selectedMovie.name}
+                poster={selectedMovie.stream_icon}
+                onProgress={handleProgress}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
