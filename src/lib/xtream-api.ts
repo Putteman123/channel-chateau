@@ -200,6 +200,8 @@ async function proxyApiCall<T>(
   action?: string,
   params?: Record<string, string | number>
 ): Promise<T> {
+  console.log('[XtreamAPI] Calling proxy with action:', action, 'params:', params);
+  
   const { data, error } = await supabase.functions.invoke('xtream-proxy', {
     body: {
       serverUrl: creds.serverUrl,
@@ -210,14 +212,25 @@ async function proxyApiCall<T>(
     },
   });
 
+  console.log('[XtreamAPI] Proxy response - error:', error, 'data type:', typeof data, 'data:', data);
+
   if (error) {
+    console.error('[XtreamAPI] Function invoke error:', error);
     throw new Error(`API call failed: ${error.message}`);
   }
 
-  if (data.error) {
-    throw new Error(data.error);
+  if (!data) {
+    console.error('[XtreamAPI] No data returned from proxy');
+    throw new Error('No data returned from API');
   }
 
+  // Handle error in response data
+  if (typeof data === 'object' && data !== null && 'error' in data) {
+    console.error('[XtreamAPI] API error:', data.error);
+    throw new Error(data.error as string);
+  }
+
+  console.log('[XtreamAPI] Returning data, length:', Array.isArray(data) ? data.length : 'not array');
   return data as T;
 }
 
