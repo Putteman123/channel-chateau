@@ -466,10 +466,11 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Error Display */}
+      {/* Error Display with Diagnostics */}
       {playerError && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/90 p-4">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/90 p-4 overflow-auto">
           <div className="max-w-lg w-full space-y-4">
+            {/* Main Error Alert */}
             <Alert variant="destructive" className="bg-destructive/20 border-destructive">
               <AlertTriangle className="h-5 w-5" />
               <AlertTitle className="text-white">{playerError.message}</AlertTitle>
@@ -483,7 +484,7 @@ export function VideoPlayer({
               </AlertDescription>
             </Alert>
 
-            {/* Provider blocking info */}
+            {/* Provider blocking warning */}
             {(playerError.httpStatus === 502 || playerError.message.includes('blockerar')) && (
               <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
                 <h4 className="font-medium text-yellow-400 mb-2">
@@ -500,6 +501,74 @@ export function VideoPlayer({
               </div>
             )}
 
+            {/* Diagnostic Info Box */}
+            <div className="rounded-lg border border-red-500/30 bg-red-950/50 p-4 space-y-3">
+              <h4 className="font-medium text-red-300 flex items-center gap-2">
+                <Bug className="h-4 w-4" />
+                Diagnostikinformation
+              </h4>
+              
+              {/* Error Details */}
+              <div className="text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-white/50">Feltyp:</span>
+                  <span className="font-mono text-red-300">{playerError.type}</span>
+                </div>
+                {playerError.httpStatus && (
+                  <div className="flex justify-between">
+                    <span className="text-white/50">HTTP-status:</span>
+                    <span className="font-mono text-red-300">{playerError.httpStatus}</span>
+                  </div>
+                )}
+                <div className="border-t border-white/10 pt-2 mt-2">
+                  <span className="text-white/50 block mb-1">Felmeddelande:</span>
+                  <code className="text-[10px] text-red-200 bg-black/30 p-1.5 rounded block break-all">
+                    {playerError.message}: {playerError.details}
+                  </code>
+                </div>
+              </div>
+
+              {/* Original URL */}
+              {diagnostics && (
+                <div className="border-t border-white/10 pt-2">
+                  <span className="text-white/50 text-xs block mb-1">Original-URL:</span>
+                  <code className="text-[10px] text-white/70 bg-black/30 p-1.5 rounded block break-all max-h-16 overflow-auto">
+                    {diagnostics.streamUrl}
+                  </code>
+                </div>
+              )}
+
+              {/* Test Link Button */}
+              <div className="border-t border-white/10 pt-2 flex flex-wrap gap-2">
+                <a
+                  href={originalStreamUrl || diagnostics?.streamUrl || extractOriginalUrl(src) || src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded text-blue-300 transition-colors"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Testa länk direkt
+                </a>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-auto py-1.5 px-3 text-xs"
+                  onClick={() => {
+                    const url = originalStreamUrl || diagnostics?.streamUrl || extractOriginalUrl(src) || src;
+                    navigator.clipboard.writeText(url);
+                  }}
+                >
+                  📋 Kopiera URL
+                </Button>
+              </div>
+              
+              <p className="text-[10px] text-white/40 italic">
+                Om länken fungerar i ny flik men inte här → Mixed Content/CORS-problem. 
+                Om den inte fungerar alls → URL:en är död eller blockerad.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
             <div className="flex flex-wrap gap-2 justify-center">
               <Button 
                 size="sm" 
@@ -550,13 +619,6 @@ export function VideoPlayer({
                     onClick={() => {
                       const url = originalStreamUrl || extractOriginalUrl(src) || src;
                       navigator.clipboard.writeText(url);
-                      // Show feedback
-                      const btn = document.activeElement as HTMLElement;
-                      if (btn) {
-                        const original = btn.textContent;
-                        btn.textContent = '✓ Kopierad!';
-                        setTimeout(() => { btn.textContent = original; }, 1500);
-                      }
                     }}
                   >
                     📋 Kopiera stream-URL
