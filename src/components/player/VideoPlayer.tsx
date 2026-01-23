@@ -2,11 +2,12 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import videojs from 'video.js';
 import Player from 'video.js/dist/types/player';
 import 'video.js/dist/video-js.css';
-import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, Bug, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 export interface VideoPlayerProps {
   src: string;
@@ -24,6 +25,18 @@ interface PlayerError {
   type: 'mixed-content' | 'cors' | 'network' | 'decode' | 'unknown';
   message: string;
   details?: string;
+  httpStatus?: number;
+}
+
+// Diagnostics info for debugging
+interface DiagnosticsInfo {
+  streamUrl: string;
+  urlType: string;
+  isProxied: boolean;
+  protocol: 'http' | 'https';
+  pageProtocol: string;
+  lastError?: string;
+  lastHttpStatus?: number;
 }
 
 function diagnoseError(src: string, errorCode?: number, errorMessage?: string): PlayerError {
@@ -100,17 +113,50 @@ export function VideoPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playerError, setPlayerError] = useState<PlayerError | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   
   const { isTvMode } = useSpatialNavigation();
 
-  // Log stream URL for debugging
+  // Analyze stream URL and set diagnostics
   useEffect(() => {
     if (src) {
+      const urlType = src.includes('.m3u8') ? 'HLS (.m3u8)' 
+        : src.includes('.ts') ? 'MPEG-TS (.ts)'
+        : src.includes('.mp4') ? 'MP4'
+        : src.includes('.mkv') ? 'MKV'
+        : 'Okänd';
+      
+      const isProxied = src.includes('/functions/v1/stream-proxy');
+      const protocol = src.startsWith('https') ? 'https' : 'http';
+      const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
+      
+      // Extract original URL if proxied
+      let displayUrl = src;
+      if (isProxied) {
+        try {
+          const urlParam = new URL(src).searchParams.get('url');
+          if (urlParam) {
+            displayUrl = decodeURIComponent(urlParam);
+          }
+        } catch {
+          // Keep original
+        }
+      }
+      
+      setDiagnostics({
+        streamUrl: displayUrl,
+        urlType,
+        isProxied,
+        protocol,
+        pageProtocol,
+      });
+      
       console.log('[VideoPlayer] Stream URL:', src);
-      console.log('[VideoPlayer] Protocol check - Page:', window.location.protocol, 'Stream:', src.startsWith('https') ? 'https' : 'http');
+      console.log('[VideoPlayer] Protocol check - Page:', pageProtocol, 'Stream:', protocol);
       
       // Pre-flight check for Mixed Content
-      if (src.startsWith('http://') && window.location.protocol === 'https:') {
+      if (protocol === 'http' && pageProtocol === 'https:') {
         console.warn('[VideoPlayer] ⚠️ Mixed Content Warning: Attempting to load HTTP stream on HTTPS page');
       }
     }
@@ -252,9 +298,23 @@ export function VideoPlayer({
         console.error('[VideoPlayer] Player error:', error);
         console.error('[VideoPlayer] Error code:', error?.code, 'Message:', error?.message);
         
+        // Try to extract HTTP status from error message
+        let httpStatus: number | undefined;
+        const statusMatch = error?.message?.match(/(\d{3})/);
+        if (statusMatch) {
+          httpStatus = parseInt(statusMatch[1]);
+        }
+        
         const diagnosis = diagnoseError(src, error?.code, error?.message);
         console.error('[VideoPlayer] Diagnosis:', diagnosis);
-        setPlayerError(diagnosis);
+        setPlayerError({ ...diagnosis, httpStatus });
+        
+        // Update diagnostics with error info
+        setDiagnostics(prev => prev ? {
+          ...prev,
+          lastError: error?.message || 'Unknown error',
+          lastHttpStatus: httpStatus,
+        } : null);
       });
 
       // VHS/HLS specific error handling
@@ -404,6 +464,75 @@ export function VideoPlayer({
               )}
             </div>
           </Alert>
+        </div>
+      )}
+
+      {/* Diagnostics Panel */}
+      {diagnostics && (
+        <div className="absolute bottom-2 left-2 z-30">
+          <Collapsible open={showDiagnostics} onOpenChange={setShowDiagnostics}>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-8 gap-1 text-xs text-white/60 hover:text-white hover:bg-white/10",
+                  diagnostics.lastHttpStatus && "text-red-400"
+                )}
+              >
+                <Bug className="h-3 w-3" />
+                Diagnostik
+                {showDiagnostics ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="mt-1 rounded-lg bg-black/90 border border-white/10 p-3 text-xs text-white/80 space-y-1.5 min-w-[280px]">
+                <div className="flex justify-between">
+                  <span className="text-white/50">URL-typ:</span>
+                  <span className="font-mono">{diagnostics.urlType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Proxad:</span>
+                  <span className={diagnostics.isProxied ? "text-green-400" : "text-yellow-400"}>
+                    {diagnostics.isProxied ? "Ja ✓" : "Nej"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Stream-protokoll:</span>
+                  <span className={cn(
+                    "font-mono",
+                    diagnostics.protocol === 'https' ? "text-green-400" : "text-yellow-400"
+                  )}>
+                    {diagnostics.protocol.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white/50">Sida:</span>
+                  <span className="font-mono">{diagnostics.pageProtocol}</span>
+                </div>
+                {diagnostics.lastHttpStatus && (
+                  <div className="flex justify-between border-t border-white/10 pt-1.5 mt-1.5">
+                    <span className="text-white/50">HTTP-status:</span>
+                    <span className="font-mono text-red-400">{diagnostics.lastHttpStatus}</span>
+                  </div>
+                )}
+                {diagnostics.lastError && (
+                  <div className="border-t border-white/10 pt-1.5 mt-1.5">
+                    <span className="text-white/50 block mb-1">Senaste fel:</span>
+                    <span className="font-mono text-red-300 text-[10px] break-all block">
+                      {diagnostics.lastError.substring(0, 100)}
+                    </span>
+                  </div>
+                )}
+                <div className="border-t border-white/10 pt-1.5 mt-1.5">
+                  <span className="text-white/50 block mb-1">Stream-URL:</span>
+                  <span className="font-mono text-[10px] break-all block text-white/70">
+                    {diagnostics.streamUrl.substring(0, 80)}...
+                  </span>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
         </div>
       )}
 
