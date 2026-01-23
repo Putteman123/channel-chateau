@@ -21,6 +21,7 @@ export interface StreamSource {
   prefer_ts_live: boolean;
   prefer_ts_vod: boolean;
   last_synced_at: string | null;
+  expires_at: string | null; // Subscription expiry date
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +35,7 @@ export interface AddXtreamSource {
   is_active?: boolean;
   prefer_ts_live?: boolean;
   prefer_ts_vod?: boolean;
+  expires_at?: string;
 }
 
 export interface AddM3USource {
@@ -43,6 +45,7 @@ export interface AddM3USource {
   is_active?: boolean;
   prefer_ts_live?: boolean;
   prefer_ts_vod?: boolean;
+  expires_at?: string;
 }
 
 export type AddSourceInput = AddXtreamSource | AddM3USource;
@@ -80,6 +83,7 @@ export function useStreamSources() {
         is_active: source.is_active ?? false,
         prefer_ts_live: source.prefer_ts_live ?? true,
         prefer_ts_vod: source.prefer_ts_vod ?? true,
+        expires_at: source.expires_at ?? null,
       };
 
       const insertData = source.source_type === 'xtream'
