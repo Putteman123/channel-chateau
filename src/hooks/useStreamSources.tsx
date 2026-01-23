@@ -20,6 +20,7 @@ export interface StreamSource {
   is_active: boolean;
   prefer_ts_live: boolean;
   prefer_ts_vod: boolean;
+  use_proxy: boolean; // Whether to route streams through proxy
   last_synced_at: string | null;
   expires_at: string | null; // Subscription expiry date
   created_at: string;

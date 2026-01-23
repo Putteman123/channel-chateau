@@ -13,6 +13,7 @@ interface StreamContextType {
   // Stream preferences
   preferTsLive: boolean;
   preferTsVod: boolean;
+  useProxy: boolean;
   isLoading: boolean;
   setActiveSourceId: (id: string) => void;
 }
@@ -64,6 +65,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       m3uUrl,
       preferTsLive: currentSource?.prefer_ts_live ?? true,
       preferTsVod: currentSource?.prefer_ts_vod ?? true,
+      useProxy: currentSource?.use_proxy ?? true,
       isLoading,
       setActiveSourceId,
     }}>
