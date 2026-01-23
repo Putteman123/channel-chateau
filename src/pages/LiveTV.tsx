@@ -6,6 +6,7 @@ import { Virtuoso } from 'react-virtuoso';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useOrientation } from '@/hooks/useOrientation';
+import { useM3UData } from '@/hooks/useM3UData';
 import { ChannelCard } from '@/components/epg/ChannelCard';
 import { EPGDrawer } from '@/components/epg/EPGDrawer';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
@@ -18,38 +19,74 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import * as XtreamAPI from '@/lib/xtream-api';
+import { M3UChannel } from '@/lib/m3u-parser';
+
+// Unified channel type for both Xtream and M3U
+type UnifiedChannel = XtreamAPI.XtreamChannel | M3UChannel;
 
 export default function LiveTV() {
   const { t } = useTranslation();
-  const { activeSource, credentials, preferTsLive } = useStream();
+  const { activeSource, sourceType, credentials, m3uUrl, preferTsLive } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { isLandscapeMobile } = useOrientation();
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedChannel, setSelectedChannel] = useState<XtreamAPI.XtreamChannel | null>(null);
-  const [playingChannel, setPlayingChannel] = useState<XtreamAPI.XtreamChannel | null>(null);
+  const [playingChannel, setPlayingChannel] = useState<UnifiedChannel | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  // Fetch categories
-  const { data: categories } = useQuery({
+  // M3U data hook - always call but conditionally enable
+  const m3uData = useM3UData({ 
+    m3uUrl, 
+    enabled: sourceType === 'm3u' && !!m3uUrl 
+  });
+
+  // Fetch Xtream categories
+  const { data: xtreamCategories } = useQuery({
     queryKey: ['live-categories', credentials?.serverUrl],
     queryFn: async () => {
       if (!credentials) return [];
       return XtreamAPI.getLiveCategories(credentials);
     },
-    enabled: !!credentials,
+    enabled: sourceType === 'xtream' && !!credentials,
   });
 
-  // Fetch channels
-  const { data: channels, isLoading, error, refetch, isRefetching } = useQuery({
+  // Fetch Xtream channels
+  const { 
+    data: xtreamChannels, 
+    isLoading: xtreamLoading, 
+    error: xtreamError, 
+    refetch: refetchXtream, 
+    isRefetching: isRefetchingXtream 
+  } = useQuery({
     queryKey: ['live-channels', credentials?.serverUrl, selectedCategory],
     queryFn: async () => {
       if (!credentials) return [];
       return XtreamAPI.getLiveStreams(credentials, selectedCategory || undefined);
     },
-    enabled: !!credentials,
+    enabled: sourceType === 'xtream' && !!credentials,
   });
+
+  // Unified data based on source type
+  const categories = useMemo(() => {
+    if (sourceType === 'm3u') {
+      return m3uData.getLiveCategories().map(c => ({ id: c.category_id, name: c.category_name }));
+    }
+    return xtreamCategories?.map(c => ({ id: c.category_id, name: c.category_name })) || [];
+  }, [sourceType, m3uData, xtreamCategories]);
+
+  const channels = useMemo(() => {
+    if (sourceType === 'm3u') {
+      return m3uData.getLiveChannels(selectedCategory || undefined);
+    }
+    return xtreamChannels || [];
+  }, [sourceType, m3uData, xtreamChannels, selectedCategory]);
+
+  const isLoading = sourceType === 'm3u' ? m3uData.isLoading : xtreamLoading;
+  const error = sourceType === 'm3u' ? m3uData.error : xtreamError;
+  const refetch = sourceType === 'm3u' ? m3uData.refetch : refetchXtream;
+  const isRefetching = sourceType === 'm3u' ? m3uData.isLoading : isRefetchingXtream;
 
   // Filter channels by search
   const filteredChannels = useMemo(() => {
@@ -62,7 +99,7 @@ export default function LiveTV() {
     );
   }, [channels, searchQuery]);
 
-  const handleToggleFavorite = (channel: XtreamAPI.XtreamChannel) => {
+  const handleToggleFavorite = (channel: UnifiedChannel) => {
     if (!activeSource) return;
     
     const itemId = String(channel.stream_id);
@@ -79,22 +116,36 @@ export default function LiveTV() {
     }
   };
 
-  const getStreamUrl = useCallback((channel: XtreamAPI.XtreamChannel) => {
+  const getStreamUrl = useCallback((channel: UnifiedChannel) => {
+    // For M3U channels, use the stream_url directly (through proxy)
+    if ('stream_url' in channel && channel.stream_url) {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(channel.stream_url)}`;
+    }
+    // For Xtream channels
     if (!credentials) return '';
     return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { preferTs: preferTsLive });
   }, [credentials, preferTsLive]);
 
-  const getOriginalStreamUrl = useCallback((channel: XtreamAPI.XtreamChannel) => {
+  const getOriginalStreamUrl = useCallback((channel: UnifiedChannel) => {
+    // For M3U channels, return the direct URL
+    if ('stream_url' in channel && channel.stream_url) {
+      return channel.stream_url;
+    }
+    // For Xtream channels
     if (!credentials) return '';
     return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { useProxy: false });
   }, [credentials]);
 
-  const handlePlayChannel = (channel: XtreamAPI.XtreamChannel) => {
+  const handlePlayChannel = (channel: UnifiedChannel) => {
     setPlayingChannel(channel);
     setSelectedChannel(null);
   };
 
-  if (!credentials) {
+  // Check if we have a valid source
+  const hasValidSource = (sourceType === 'xtream' && credentials) || (sourceType === 'm3u' && m3uUrl);
+
+  if (!hasValidSource) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-muted-foreground">Ingen streamkälla vald</p>
@@ -109,6 +160,7 @@ export default function LiveTV() {
           <h1 className="text-3xl font-bold">Live TV</h1>
           <p className="text-muted-foreground">
             {channels?.length || 0} kanaler tillgängliga
+            {sourceType === 'm3u' && <span className="ml-2 text-xs">(M3U)</span>}
           </p>
         </div>
 
@@ -138,7 +190,7 @@ export default function LiveTV() {
 
       {categories && categories.length > 0 && (
         <CategoryFilter
-          categories={categories.map((c) => ({ id: c.category_id, name: c.category_name }))}
+          categories={categories}
           selectedCategory={selectedCategory}
           onSelectCategory={setSelectedCategory}
         />
@@ -155,7 +207,7 @@ export default function LiveTV() {
           emptyMessage="Inga kanaler hittades"
           renderItem={(channel) => (
             <ChannelCard
-              channel={channel}
+              channel={channel as XtreamAPI.XtreamChannel}
               credentials={credentials}
               isFavorite={isFavorite(activeSource!.id, 'channel', String(channel.stream_id))}
               onPlay={() => handlePlayChannel(channel)}
@@ -175,7 +227,7 @@ export default function LiveTV() {
             return (
               <div
                 className="mb-2 flex cursor-pointer items-center gap-4 rounded-lg bg-card p-3 transition-colors hover:bg-card/80"
-                onClick={() => setSelectedChannel(channel)}
+                onClick={() => setSelectedChannel(channel as XtreamAPI.XtreamChannel)}
               >
                 {/* Channel logo */}
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-muted">
@@ -219,14 +271,16 @@ export default function LiveTV() {
         />
       )}
 
-      {/* EPG Drawer for channel details */}
-      <EPGDrawer
-        open={!!selectedChannel}
-        onOpenChange={() => setSelectedChannel(null)}
-        channel={selectedChannel}
-        credentials={credentials}
-        onPlay={() => selectedChannel && handlePlayChannel(selectedChannel)}
-      />
+      {/* EPG Drawer for channel details (Xtream only) */}
+      {sourceType === 'xtream' && credentials && (
+        <EPGDrawer
+          open={!!selectedChannel}
+          onOpenChange={() => setSelectedChannel(null)}
+          channel={selectedChannel}
+          credentials={credentials}
+          onPlay={() => selectedChannel && handlePlayChannel(selectedChannel)}
+        />
+      )}
 
       {/* Video Player - Fullscreen in landscape mobile, Dialog otherwise */}
       {isLandscapeMobile && playingChannel ? (

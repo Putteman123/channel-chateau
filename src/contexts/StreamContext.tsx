@@ -1,11 +1,16 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { useStreamSources, StreamSource } from '@/hooks/useStreamSources';
+import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
 import { XtreamCredentials } from '@/lib/xtream-api';
 
 interface StreamContextType {
   sources: StreamSource[];
   activeSource: StreamSource | undefined;
+  sourceType: SourceType;
+  // For Xtream sources
   credentials: XtreamCredentials | null;
+  // For M3U sources
+  m3uUrl: string | null;
+  // Stream preferences
   preferTsLive: boolean;
   preferTsVod: boolean;
   isLoading: boolean;
@@ -22,12 +27,20 @@ export function StreamProvider({ children }: { children: ReactNode }) {
     ? sources.find(s => s.id === activeId) 
     : activeSource;
 
-  const credentials: XtreamCredentials | null = currentSource 
+  const sourceType: SourceType = currentSource?.source_type ?? 'xtream';
+
+  // Build Xtream credentials if applicable
+  const credentials: XtreamCredentials | null = currentSource && currentSource.source_type === 'xtream'
     ? {
-        serverUrl: currentSource.server_url,
-        username: currentSource.username,
-        password: currentSource.password,
+        serverUrl: currentSource.server_url || '',
+        username: currentSource.username || '',
+        password: currentSource.password || '',
       }
+    : null;
+
+  // M3U URL if applicable
+  const m3uUrl: string | null = currentSource?.source_type === 'm3u' 
+    ? currentSource.m3u_url 
     : null;
 
   const setActiveSourceId = (id: string) => {
@@ -46,7 +59,9 @@ export function StreamProvider({ children }: { children: ReactNode }) {
     <StreamContext.Provider value={{
       sources,
       activeSource: currentSource,
+      sourceType,
       credentials,
+      m3uUrl,
       preferTsLive: currentSource?.prefer_ts_live ?? true,
       preferTsVod: currentSource?.prefer_ts_vod ?? true,
       isLoading,

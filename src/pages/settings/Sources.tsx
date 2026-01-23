@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil } from 'lucide-react';
-import { useStreamSources, StreamSource } from '@/hooks/useStreamSources';
+import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio } from 'lucide-react';
+import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,14 +25,22 @@ import {
 import { toast } from 'sonner';
 import * as XtreamAPI from '@/lib/xtream-api';
 
-const sourceSchema = z.object({
+// Xtream schema
+const xtreamSchema = z.object({
   name: z.string().min(1, 'Namn krävs').max(50),
   server_url: z.string().min(1, 'Server URL krävs'),
   username: z.string().min(1, 'Användarnamn krävs'),
   password: z.string().min(1, 'Lösenord krävs'),
 });
 
-type SourceForm = z.infer<typeof sourceSchema>;
+// M3U schema
+const m3uSchema = z.object({
+  name: z.string().min(1, 'Namn krävs').max(50),
+  m3u_url: z.string().min(1, 'M3U URL krävs').url('Ange en giltig URL'),
+});
+
+type XtreamForm = z.infer<typeof xtreamSchema>;
+type M3UForm = z.infer<typeof m3uSchema>;
 
 export default function Sources() {
   const { sources, isLoading, addSource, updateSource, deleteSource } = useStreamSources();
@@ -39,9 +48,10 @@ export default function Sources() {
   const [editingSource, setEditingSource] = useState<StreamSource | null>(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [addSourceType, setAddSourceType] = useState<SourceType>('xtream');
 
-  const form = useForm<SourceForm>({
-    resolver: zodResolver(sourceSchema),
+  const xtreamForm = useForm<XtreamForm>({
+    resolver: zodResolver(xtreamSchema),
     defaultValues: {
       name: '',
       server_url: '',
@@ -50,31 +60,44 @@ export default function Sources() {
     },
   });
 
-  // Reset form when editing source changes
+  const m3uForm = useForm<M3UForm>({
+    resolver: zodResolver(m3uSchema),
+    defaultValues: {
+      name: '',
+      m3u_url: '',
+    },
+  });
+
+  // Reset forms when editing source changes
   useEffect(() => {
     if (editingSource) {
-      form.reset({
-        name: editingSource.name,
-        server_url: editingSource.server_url,
-        username: editingSource.username,
-        password: editingSource.password,
-      });
+      if (editingSource.source_type === 'xtream') {
+        xtreamForm.reset({
+          name: editingSource.name,
+          server_url: editingSource.server_url || '',
+          username: editingSource.username || '',
+          password: editingSource.password || '',
+        });
+        setAddSourceType('xtream');
+      } else {
+        m3uForm.reset({
+          name: editingSource.name,
+          m3u_url: editingSource.m3u_url || '',
+        });
+        setAddSourceType('m3u');
+      }
       setConnectionStatus('idle');
     }
-  }, [editingSource, form]);
+  }, [editingSource, xtreamForm, m3uForm]);
 
-  const resetForm = () => {
-    form.reset({
-      name: '',
-      server_url: '',
-      username: '',
-      password: '',
-    });
+  const resetForms = () => {
+    xtreamForm.reset({ name: '', server_url: '', username: '', password: '' });
+    m3uForm.reset({ name: '', m3u_url: '' });
     setConnectionStatus('idle');
   };
 
-  const testConnection = async () => {
-    const values = form.getValues();
+  const testXtreamConnection = async () => {
+    const values = xtreamForm.getValues();
     if (!values.server_url || !values.username || !values.password) {
       toast.error('Fyll i alla fält först');
       return;
@@ -100,9 +123,55 @@ export default function Sources() {
     }
   };
 
-  const onSubmitAdd = async (data: SourceForm) => {
+  const testM3UConnection = async () => {
+    const values = m3uForm.getValues();
+    if (!values.m3u_url) {
+      toast.error('Ange M3U URL först');
+      return;
+    }
+
+    setIsTestingConnection(true);
+    setConnectionStatus('idle');
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const proxyUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(values.m3u_url)}`;
+      const response = await fetch(proxyUrl, { method: 'HEAD' });
+      
+      if (response.ok || response.status === 200) {
+        setConnectionStatus('success');
+        toast.success('M3U-länk verifierad!');
+      } else {
+        throw new Error(`HTTP ${response.status}`);
+      }
+    } catch (error: unknown) {
+      // Try a GET request instead (some servers don't support HEAD)
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const proxyUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(values.m3u_url)}`;
+        const response = await fetch(proxyUrl);
+        const text = await response.text();
+        
+        if (text.includes('#EXTM3U') || text.includes('#EXTINF')) {
+          setConnectionStatus('success');
+          toast.success('M3U-länk verifierad!');
+        } else {
+          throw new Error('Inte en giltig M3U-fil');
+        }
+      } catch (innerError) {
+        setConnectionStatus('error');
+        const message = innerError instanceof Error ? innerError.message : 'Okänt fel';
+        toast.error('Kunde inte verifiera M3U: ' + message);
+      }
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  const onSubmitXtreamAdd = async (data: XtreamForm) => {
     try {
       await addSource.mutateAsync({
+        source_type: 'xtream',
         name: data.name,
         server_url: data.server_url,
         username: data.username,
@@ -110,13 +179,28 @@ export default function Sources() {
         is_active: sources.length === 0,
       });
       setIsAddDialogOpen(false);
-      resetForm();
+      resetForms();
     } catch {
       // Error handled by mutation
     }
   };
 
-  const onSubmitEdit = async (data: SourceForm) => {
+  const onSubmitM3UAdd = async (data: M3UForm) => {
+    try {
+      await addSource.mutateAsync({
+        source_type: 'm3u',
+        name: data.name,
+        m3u_url: data.m3u_url,
+        is_active: sources.length === 0,
+      });
+      setIsAddDialogOpen(false);
+      resetForms();
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const onSubmitXtreamEdit = async (data: XtreamForm) => {
     if (!editingSource) return;
     
     try {
@@ -128,7 +212,23 @@ export default function Sources() {
         password: data.password,
       });
       setEditingSource(null);
-      resetForm();
+      resetForms();
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const onSubmitM3UEdit = async (data: M3UForm) => {
+    if (!editingSource) return;
+    
+    try {
+      await updateSource.mutateAsync({
+        id: editingSource.id,
+        name: data.name,
+        m3u_url: data.m3u_url,
+      });
+      setEditingSource(null);
+      resetForms();
     } catch {
       // Error handled by mutation
     }
@@ -141,14 +241,15 @@ export default function Sources() {
   const handleCloseAddDialog = (open: boolean) => {
     setIsAddDialogOpen(open);
     if (!open) {
-      resetForm();
+      resetForms();
+      setAddSourceType('xtream');
     }
   };
 
   const handleCloseEditDialog = (open: boolean) => {
     if (!open) {
       setEditingSource(null);
-      resetForm();
+      resetForms();
     }
   };
 
@@ -160,96 +261,13 @@ export default function Sources() {
     );
   }
 
-  const SourceFormFields = () => (
-    <>
-      <FormField
-        control={form.control}
-        name="name"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Namn</FormLabel>
-            <FormControl>
-              <Input placeholder="Min IPTV" {...field} />
-            </FormControl>
-            <FormDescription>Ett namn för att identifiera denna källa</FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name="server_url"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Server URL</FormLabel>
-            <FormControl>
-              <Input placeholder="http://server.example.com:port" {...field} />
-            </FormControl>
-            <FormDescription>Xtream Codes server-adress</FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name="username"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Användarnamn</FormLabel>
-            <FormControl>
-              <Input placeholder="användarnamn" {...field} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name="password"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Lösenord</FormLabel>
-            <FormControl>
-              <Input type="password" placeholder="••••••••" {...field} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={testConnection}
-          disabled={isTestingConnection}
-          className="gap-2"
-        >
-          {isTestingConnection ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : connectionStatus === 'success' ? (
-            <CheckCircle className="h-4 w-4 text-green-500" />
-          ) : connectionStatus === 'error' ? (
-            <XCircle className="h-4 w-4 text-destructive" />
-          ) : (
-            <Wifi className="h-4 w-4" />
-          )}
-          Testa anslutning
-        </Button>
-      </div>
-    </>
-  );
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Streamkällor</h2>
           <p className="text-muted-foreground">
-            Hantera dina Xtream Codes-konton
+            Hantera dina Xtream Codes- och M3U-källor
           </p>
         </div>
 
@@ -260,48 +278,347 @@ export default function Sources() {
               Lägg till källa
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Lägg till streamkälla</DialogTitle>
             </DialogHeader>
 
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmitAdd)} className="space-y-4">
-                <SourceFormFields />
-                <Button
-                  type="submit"
-                  disabled={addSource.isPending}
-                  className="w-full"
-                >
-                  {addSource.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Lägg till
-                </Button>
-              </form>
-            </Form>
+            <Tabs value={addSourceType} onValueChange={(v) => setAddSourceType(v as SourceType)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="xtream" className="gap-2">
+                  <Radio className="h-4 w-4" />
+                  Xtream Codes
+                </TabsTrigger>
+                <TabsTrigger value="m3u" className="gap-2">
+                  <List className="h-4 w-4" />
+                  M3U Playlist
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="xtream" className="mt-4">
+                <Form {...xtreamForm}>
+                  <form onSubmit={xtreamForm.handleSubmit(onSubmitXtreamAdd)} className="space-y-4">
+                    <FormField
+                      control={xtreamForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Namn</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Min IPTV" {...field} />
+                          </FormControl>
+                          <FormDescription>Ett namn för att identifiera denna källa</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={xtreamForm.control}
+                      name="server_url"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Server URL</FormLabel>
+                          <FormControl>
+                            <Input placeholder="http://server.example.com:port" {...field} />
+                          </FormControl>
+                          <FormDescription>Xtream Codes server-adress</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={xtreamForm.control}
+                      name="username"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Användarnamn</FormLabel>
+                          <FormControl>
+                            <Input placeholder="användarnamn" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={xtreamForm.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Lösenord</FormLabel>
+                          <FormControl>
+                            <Input type="password" placeholder="••••••••" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={testXtreamConnection}
+                        disabled={isTestingConnection}
+                        className="gap-2"
+                      >
+                        {isTestingConnection ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : connectionStatus === 'success' ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : connectionStatus === 'error' ? (
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <Wifi className="h-4 w-4" />
+                        )}
+                        Testa anslutning
+                      </Button>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={addSource.isPending}
+                      className="w-full"
+                    >
+                      {addSource.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Lägg till
+                    </Button>
+                  </form>
+                </Form>
+              </TabsContent>
+
+              <TabsContent value="m3u" className="mt-4">
+                <Form {...m3uForm}>
+                  <form onSubmit={m3uForm.handleSubmit(onSubmitM3UAdd)} className="space-y-4">
+                    <FormField
+                      control={m3uForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Namn</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Min Sport-lista" {...field} />
+                          </FormControl>
+                          <FormDescription>Ett namn för att identifiera denna källa</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={m3uForm.control}
+                      name="m3u_url"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>M3U URL</FormLabel>
+                          <FormControl>
+                            <Input placeholder="http://provider.com/get.php?type=m3u..." {...field} />
+                          </FormControl>
+                          <FormDescription>Komplett länk till M3U-spellistan</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={testM3UConnection}
+                        disabled={isTestingConnection}
+                        className="gap-2"
+                      >
+                        {isTestingConnection ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : connectionStatus === 'success' ? (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        ) : connectionStatus === 'error' ? (
+                          <XCircle className="h-4 w-4 text-destructive" />
+                        ) : (
+                          <Wifi className="h-4 w-4" />
+                        )}
+                        Verifiera M3U
+                      </Button>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={addSource.isPending}
+                      className="w-full"
+                    >
+                      {addSource.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Lägg till
+                    </Button>
+                  </form>
+                </Form>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
       </div>
 
       {/* Edit Dialog */}
       <Dialog open={!!editingSource} onOpenChange={handleCloseEditDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Redigera streamkälla</DialogTitle>
           </DialogHeader>
 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmitEdit)} className="space-y-4">
-              <SourceFormFields />
-              <Button
-                type="submit"
-                disabled={updateSource.isPending}
-                className="w-full"
-              >
-                {updateSource.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Spara ändringar
-              </Button>
-            </form>
-          </Form>
+          {editingSource?.source_type === 'xtream' ? (
+            <Form {...xtreamForm}>
+              <form onSubmit={xtreamForm.handleSubmit(onSubmitXtreamEdit)} className="space-y-4">
+                <FormField
+                  control={xtreamForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Namn</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Min IPTV" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={xtreamForm.control}
+                  name="server_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Server URL</FormLabel>
+                      <FormControl>
+                        <Input placeholder="http://server.example.com:port" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={xtreamForm.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Användarnamn</FormLabel>
+                      <FormControl>
+                        <Input placeholder="användarnamn" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={xtreamForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Lösenord</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={testXtreamConnection}
+                    disabled={isTestingConnection}
+                    className="gap-2"
+                  >
+                    {isTestingConnection ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : connectionStatus === 'success' ? (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    ) : connectionStatus === 'error' ? (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <Wifi className="h-4 w-4" />
+                    )}
+                    Testa anslutning
+                  </Button>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={updateSource.isPending}
+                  className="w-full"
+                >
+                  {updateSource.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Spara ändringar
+                </Button>
+              </form>
+            </Form>
+          ) : (
+            <Form {...m3uForm}>
+              <form onSubmit={m3uForm.handleSubmit(onSubmitM3UEdit)} className="space-y-4">
+                <FormField
+                  control={m3uForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Namn</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Min Sport-lista" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={m3uForm.control}
+                  name="m3u_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>M3U URL</FormLabel>
+                      <FormControl>
+                        <Input placeholder="http://provider.com/get.php?type=m3u..." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={testM3UConnection}
+                    disabled={isTestingConnection}
+                    className="gap-2"
+                  >
+                    {isTestingConnection ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : connectionStatus === 'success' ? (
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                    ) : connectionStatus === 'error' ? (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <Wifi className="h-4 w-4" />
+                    )}
+                    Verifiera M3U
+                  </Button>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={updateSource.isPending}
+                  className="w-full"
+                >
+                  {updateSource.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Spara ändringar
+                </Button>
+              </form>
+            </Form>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -312,7 +629,7 @@ export default function Sources() {
             <WifiOff className="h-12 w-12 text-muted-foreground/50" />
             <h3 className="mt-4 font-semibold">Inga streamkällor</h3>
             <p className="mt-2 text-center text-sm text-muted-foreground">
-              Lägg till en Xtream Codes-källa för att börja streama.
+              Lägg till en Xtream Codes- eller M3U-källa för att börja streama.
             </p>
           </CardContent>
         </Card>
@@ -323,11 +640,21 @@ export default function Sources() {
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center gap-3">
                   <div className={`rounded-full p-2 ${source.is_active ? 'bg-primary/20' : 'bg-muted'}`}>
-                    <Wifi className={`h-4 w-4 ${source.is_active ? 'text-primary' : 'text-muted-foreground'}`} />
+                    {source.source_type === 'm3u' ? (
+                      <List className={`h-4 w-4 ${source.is_active ? 'text-primary' : 'text-muted-foreground'}`} />
+                    ) : (
+                      <Wifi className={`h-4 w-4 ${source.is_active ? 'text-primary' : 'text-muted-foreground'}`} />
+                    )}
                   </div>
                   <div>
                     <CardTitle className="text-lg">{source.name}</CardTitle>
-                    <CardDescription>{source.server_url}</CardDescription>
+                    <CardDescription>
+                      {source.source_type === 'm3u' ? (
+                        <span className="text-xs">M3U Playlist</span>
+                      ) : (
+                        source.server_url
+                      )}
+                    </CardDescription>
                   </div>
                 </div>
 
@@ -337,6 +664,9 @@ export default function Sources() {
                       Aktiv
                     </span>
                   )}
+                  <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                    {source.source_type === 'm3u' ? 'M3U' : 'Xtream'}
+                  </span>
 
                   <Button
                     variant="ghost"
@@ -375,48 +705,52 @@ export default function Sources() {
               </CardHeader>
               <CardContent>
                 <dl className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <dt className="text-muted-foreground">Användarnamn</dt>
-                    <dd>{source.username}</dd>
-                  </div>
+                  {source.source_type === 'xtream' && source.username && (
+                    <div>
+                      <dt className="text-muted-foreground">Användarnamn</dt>
+                      <dd>{source.username}</dd>
+                    </div>
+                  )}
                   <div>
                     <dt className="text-muted-foreground">Tillagd</dt>
                     <dd>{new Date(source.created_at).toLocaleDateString('sv-SE')}</dd>
                   </div>
                 </dl>
                 
-                {/* Stream format toggles */}
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between rounded-lg border p-3">
-                    <div className="space-y-0.5">
-                      <div className="text-sm font-medium">Föredra TS för live</div>
-                      <div className="text-xs text-muted-foreground">
-                        Använd .ts istället för .m3u8 (kringgår blockering)
+                {/* Stream format toggles (only for Xtream sources) */}
+                {source.source_type === 'xtream' && (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Föredra TS för live</div>
+                        <div className="text-xs text-muted-foreground">
+                          Använd .ts istället för .m3u8 (kringgår blockering)
+                        </div>
                       </div>
+                      <Switch
+                        checked={source.prefer_ts_live}
+                        onCheckedChange={(checked) => {
+                          updateSource.mutate({ id: source.id, prefer_ts_live: checked });
+                        }}
+                      />
                     </div>
-                    <Switch
-                      checked={source.prefer_ts_live}
-                      onCheckedChange={(checked) => {
-                        updateSource.mutate({ id: source.id, prefer_ts_live: checked });
-                      }}
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between rounded-lg border p-3">
-                    <div className="space-y-0.5">
-                      <div className="text-sm font-medium">Föredra TS för VOD</div>
-                      <div className="text-xs text-muted-foreground">
-                        Använd .ts för filmer/serier (kan hjälpa mot blockeringar)
+                    
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Föredra TS för VOD</div>
+                        <div className="text-xs text-muted-foreground">
+                          Använd .ts för filmer/serier (kan hjälpa mot blockeringar)
+                        </div>
                       </div>
+                      <Switch
+                        checked={source.prefer_ts_vod}
+                        onCheckedChange={(checked) => {
+                          updateSource.mutate({ id: source.id, prefer_ts_vod: checked });
+                        }}
+                      />
                     </div>
-                    <Switch
-                      checked={source.prefer_ts_vod}
-                      onCheckedChange={(checked) => {
-                        updateSource.mutate({ id: source.id, prefer_ts_vod: checked });
-                      }}
-                    />
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           ))}
