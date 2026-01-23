@@ -107,10 +107,13 @@ export default function Browse() {
   }
 
   if (hasError) {
+    // Pass the first error to LoadError for detection
+    const firstError = channelsError || moviesError || seriesError;
     return (
       <LoadError 
         onRetry={handleRetry}
         isRetrying={isRetrying}
+        error={firstError}
       />
     );
   }
