@@ -8,7 +8,7 @@ interface ContentCardProps {
   title: string;
   poster?: string;
   type: 'channel' | 'movie' | 'series';
-  rating?: number;
+  rating?: number | string;
   year?: string;
   category?: string;
   isFavorite?: boolean;
@@ -110,9 +110,9 @@ export function ContentCard({
       <div className="mt-2 space-y-1">
         <h3 className="line-clamp-2 text-sm font-medium leading-tight">{title}</h3>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {rating && rating > 0 && (
+          {rating && Number(rating) > 0 && (
             <span className="flex items-center gap-1">
-              ⭐ {rating.toFixed(1)}
+              ⭐ {Number(rating).toFixed(1)}
             </span>
           )}
           {year && <span>{year}</span>}
