@@ -44,12 +44,27 @@ serve(async (req) => {
     const decodedUrl = decodeURIComponent(streamUrl);
     console.log(`[stream-proxy] Proxying: ${decodedUrl.substring(0, 100)}...`);
 
-    // Fetch the stream
+    // Extract origin from stream URL for Referer/Origin headers
+    let streamOrigin = "";
+    try {
+      streamOrigin = new URL(decodedUrl).origin;
+    } catch {
+      // Invalid URL, skip origin headers
+    }
+
+    // Fetch the stream with VLC-like headers to avoid blocking
     const response = await fetch(decodedUrl, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "VLC/3.0.20 LibVLC/3.0.20",
         "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Connection": "keep-alive",
+        ...(streamOrigin && {
+          "Referer": streamOrigin + "/",
+          "Origin": streamOrigin,
+        }),
       },
+      redirect: "follow",
     });
 
     if (!response.ok) {
