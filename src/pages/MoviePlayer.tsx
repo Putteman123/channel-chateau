@@ -50,6 +50,15 @@ export default function MoviePlayer() {
     });
   };
 
+  const getOriginalStreamUrl = () => {
+    if (!credentials || !id) return '';
+    const extension = movie?.container_extension || 'mp4';
+    return XtreamAPI.buildMovieStreamUrl(credentials, parseInt(id), { 
+      extension, 
+      useProxy: false 
+    });
+  };
+
   const handleClose = () => {
     navigate('/movies');
   };
@@ -129,6 +138,7 @@ export default function MoviePlayer() {
       <div className="flex-1">
         <VideoPlayer
           src={getStreamUrl()}
+          originalStreamUrl={getOriginalStreamUrl()}
           title={displayTitle}
           poster={displayPoster}
           onClose={handleClose}

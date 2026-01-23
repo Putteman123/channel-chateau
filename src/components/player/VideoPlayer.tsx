@@ -2,13 +2,18 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import videojs from 'video.js';
 import Player from 'video.js/dist/types/player';
 import 'video.js/dist/video-js.css';
-import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, Bug, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward, AlertTriangle, Bug, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
 import { cn } from '@/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 export interface VideoPlayerProps {
   src: string;
   poster?: string;
@@ -18,6 +23,8 @@ export interface VideoPlayerProps {
   onClose?: () => void;
   startPosition?: number;
   autoPlay?: boolean;
+  /** Original stream URL (before proxy) for external player fallback */
+  originalStreamUrl?: string;
 }
 
 // Diagnostik för spelarfel
@@ -93,6 +100,33 @@ function diagnoseError(src: string, errorCode?: number, errorMessage?: string): 
   };
 }
 
+// Helper function to get original stream URL from proxied URL
+function extractOriginalUrl(proxyUrl: string): string | null {
+  if (!proxyUrl.includes('/functions/v1/stream-proxy')) return null;
+  try {
+    const url = new URL(proxyUrl);
+    const originalUrl = url.searchParams.get('url');
+    return originalUrl ? decodeURIComponent(originalUrl) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Build external player URLs
+function buildExternalPlayerUrl(streamUrl: string, player: 'vlc' | 'mpv' | 'iina'): string {
+  const encodedUrl = encodeURIComponent(streamUrl);
+  switch (player) {
+    case 'vlc':
+      return `vlc://${streamUrl}`;
+    case 'mpv':
+      return `mpv://${streamUrl}`;
+    case 'iina':
+      return `iina://weblink?url=${encodedUrl}`;
+    default:
+      return streamUrl;
+  }
+}
+
 export function VideoPlayer({
   src,
   poster,
@@ -102,6 +136,7 @@ export function VideoPlayer({
   onClose,
   startPosition = 0,
   autoPlay = true,
+  originalStreamUrl,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
@@ -445,7 +480,7 @@ export function VideoPlayer({
                 </div>
               )}
             </AlertDescription>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <Button 
                 size="sm" 
                 variant="secondary"
@@ -457,6 +492,51 @@ export function VideoPlayer({
               >
                 Försök igen
               </Button>
+              
+              {/* External Player Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Öppna externt
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      window.open(buildExternalPlayerUrl(url, 'vlc'), '_blank');
+                    }}
+                  >
+                    Öppna i VLC
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      window.open(buildExternalPlayerUrl(url, 'mpv'), '_blank');
+                    }}
+                  >
+                    Öppna i MPV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      window.open(buildExternalPlayerUrl(url, 'iina'), '_blank');
+                    }}
+                  >
+                    Öppna i IINA (macOS)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      navigator.clipboard.writeText(url);
+                    }}
+                  >
+                    Kopiera URL
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
               {onClose && (
                 <Button size="sm" variant="ghost" onClick={onClose}>
                   Stäng

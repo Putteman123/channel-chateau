@@ -34,6 +34,11 @@ export default function ChannelPlayer() {
     return XtreamAPI.buildLiveStreamUrl(credentials, parseInt(id), { preferTs: preferTsLive });
   };
 
+  const getOriginalStreamUrl = () => {
+    if (!credentials || !id) return '';
+    return XtreamAPI.buildLiveStreamUrl(credentials, parseInt(id), { useProxy: false });
+  };
+
   const handleClose = () => {
     navigate('/live');
   };
@@ -95,6 +100,7 @@ export default function ChannelPlayer() {
     <div className="fixed inset-0 z-50 bg-black">
       <VideoPlayer
         src={getStreamUrl()}
+        originalStreamUrl={getOriginalStreamUrl()}
         title={channel.name}
         poster={channel.stream_icon}
         onClose={handleClose}
