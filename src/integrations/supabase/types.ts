@@ -93,6 +93,7 @@ export type Database = {
           last_synced_at: string | null
           name: string
           password: string
+          prefer_ts_live: boolean
           server_url: string
           updated_at: string
           user_id: string
@@ -105,6 +106,7 @@ export type Database = {
           last_synced_at?: string | null
           name?: string
           password: string
+          prefer_ts_live?: boolean
           server_url: string
           updated_at?: string
           user_id: string
@@ -117,6 +119,7 @@ export type Database = {
           last_synced_at?: string | null
           name?: string
           password?: string
+          prefer_ts_live?: boolean
           server_url?: string
           updated_at?: string
           user_id?: string

@@ -193,17 +193,26 @@ function proxyStreamUrl(url: string): string {
 }
 
 // Build stream URL for live channels
-export function buildLiveStreamUrl(creds: XtreamCredentials, streamId: number, useProxy: boolean = true): string {
+export function buildLiveStreamUrl(
+  creds: XtreamCredentials, 
+  streamId: number, 
+  options: { useProxy?: boolean; preferTs?: boolean } = {}
+): string {
+  const { useProxy = true, preferTs = true } = options;
   const base = buildBaseUrl(creds);
   const directM3u8Url = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.m3u8`;
   const directTsUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.ts`;
   
   // If we're on an HTTPS page and the stream is HTTP, we must proxy.
   // Many IPTV providers block proxied HLS playlists (.m3u8) but allow direct TS streams (.ts).
-  // So when proxying, prefer .ts.
   if (useProxy && shouldUseProxy(directM3u8Url)) {
-    console.log('[XtreamAPI] Using stream proxy (ts) for:', directTsUrl.substring(0, 60) + '...');
-    return proxyStreamUrl(directTsUrl);
+    if (preferTs) {
+      console.log('[XtreamAPI] Using stream proxy (ts) for:', directTsUrl.substring(0, 60) + '...');
+      return proxyStreamUrl(directTsUrl);
+    } else {
+      console.log('[XtreamAPI] Using stream proxy (m3u8) for:', directM3u8Url.substring(0, 60) + '...');
+      return proxyStreamUrl(directM3u8Url);
+    }
   }
   
   return directM3u8Url;

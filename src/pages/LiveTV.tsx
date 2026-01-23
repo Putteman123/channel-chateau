@@ -21,7 +21,7 @@ import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function LiveTV() {
   const { t } = useTranslation();
-  const { activeSource, credentials } = useStream();
+  const { activeSource, credentials, preferTsLive } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { isLandscapeMobile } = useOrientation();
   
@@ -81,7 +81,7 @@ export default function LiveTV() {
 
   const getStreamUrl = (channel: XtreamAPI.XtreamChannel) => {
     if (!credentials) return '';
-    return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id);
+    return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { preferTs: preferTsLive });
   };
 
   const handlePlayChannel = (channel: XtreamAPI.XtreamChannel) => {
