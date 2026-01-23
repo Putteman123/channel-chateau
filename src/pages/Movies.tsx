@@ -9,6 +9,7 @@ import { ContentCard } from '@/components/content/ContentCard';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
+import { LoadError } from '@/components/content/LoadError';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import * as XtreamAPI from '@/lib/xtream-api';
@@ -35,7 +36,7 @@ export default function Movies() {
   });
 
   // Fetch movies
-  const { data: movies, isLoading } = useQuery({
+  const { data: movies, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['movies', credentials?.serverUrl, selectedCategory],
     queryFn: async () => {
       if (!credentials) return [];
@@ -131,6 +132,8 @@ export default function Movies() {
 
       {isLoading ? (
         <ContentSkeleton count={12} />
+      ) : error ? (
+        <LoadError onRetry={() => refetch()} isRetrying={isRefetching} />
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {filteredMovies.map((movie) => (

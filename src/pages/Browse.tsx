@@ -8,6 +8,7 @@ import { useFavorites } from '@/hooks/useFavorites';
 import { ContentCard } from '@/components/content/ContentCard';
 import { ContentRow } from '@/components/content/ContentRow';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
+import { LoadError } from '@/components/content/LoadError';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import * as XtreamAPI from '@/lib/xtream-api';
@@ -19,7 +20,7 @@ export default function Browse() {
   const { favorites, isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
 
   // Fetch live channels
-  const { data: liveChannels, isLoading: loadingChannels } = useQuery({
+  const { data: liveChannels, isLoading: loadingChannels, error: channelsError, refetch: refetchChannels, isRefetching: isRefetchingChannels } = useQuery({
     queryKey: ['live-channels', credentials?.serverUrl],
     queryFn: async () => {
       if (!credentials) return [];
@@ -30,7 +31,7 @@ export default function Browse() {
   });
 
   // Fetch movies
-  const { data: movies, isLoading: loadingMovies } = useQuery({
+  const { data: movies, isLoading: loadingMovies, error: moviesError, refetch: refetchMovies, isRefetching: isRefetchingMovies } = useQuery({
     queryKey: ['movies', credentials?.serverUrl],
     queryFn: async () => {
       if (!credentials) return [];
@@ -41,7 +42,7 @@ export default function Browse() {
   });
 
   // Fetch series
-  const { data: series, isLoading: loadingSeries } = useQuery({
+  const { data: series, isLoading: loadingSeries, error: seriesError, refetch: refetchSeries, isRefetching: isRefetchingSeries } = useQuery({
     queryKey: ['series', credentials?.serverUrl],
     queryFn: async () => {
       if (!credentials) return [];
@@ -92,9 +93,26 @@ export default function Browse() {
   }
 
   const isLoading = loadingChannels || loadingMovies || loadingSeries;
+  const hasError = channelsError || moviesError || seriesError;
+  const isRetrying = isRefetchingChannels || isRefetchingMovies || isRefetchingSeries;
+
+  const handleRetry = () => {
+    if (channelsError) refetchChannels();
+    if (moviesError) refetchMovies();
+    if (seriesError) refetchSeries();
+  };
 
   if (isLoading) {
     return <ContentSkeleton type="row" />;
+  }
+
+  if (hasError) {
+    return (
+      <LoadError 
+        onRetry={handleRetry}
+        isRetrying={isRetrying}
+      />
+    );
   }
 
   return (
