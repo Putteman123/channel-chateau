@@ -45,12 +45,20 @@
     "liveTV": "Live TV",
     "movies": "Movies",
     "series": "Series",
+    "streamingHub": "Streaming Hub",
     "favorites": "Favorites",
     "continueWatching": "Continue Watching",
     "settings": "Settings",
     "profile": "Profile",
     "sources": "Stream Sources",
     "language": "Language"
+  },
+  "streamingHub": {
+    "title": "Streaming Hub",
+    "description": "Browse content by streaming provider",
+    "providers": "Streaming Providers",
+    "searchContent": "Search movies and series...",
+    "allProviders": "All Providers"
   },
   "browse": {
     "title": "Browse",
