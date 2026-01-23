@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      announcements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          message: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          message: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          message?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       favorites: {
         Row: {
           created_at: string
@@ -60,7 +90,9 @@ export type Database = {
           avatar_url: string | null
           created_at: string
           display_name: string | null
+          expires_at: string | null
           id: string
+          is_banned: boolean
           preferred_device: string | null
           updated_at: string
           user_id: string
@@ -69,7 +101,9 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          expires_at?: string | null
           id?: string
+          is_banned?: boolean
           preferred_device?: string | null
           updated_at?: string
           user_id: string
@@ -78,7 +112,9 @@ export type Database = {
           avatar_url?: string | null
           created_at?: string
           display_name?: string | null
+          expires_at?: string | null
           id?: string
+          is_banned?: boolean
           preferred_device?: string | null
           updated_at?: string
           user_id?: string
@@ -139,6 +175,36 @@ export type Database = {
           use_proxy?: boolean
           user_id?: string
           username?: string | null
+        }
+        Relationships: []
+      }
+      support_tickets: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          status: string
+          subject: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          status?: string
+          subject: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          status?: string
+          subject?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

@@ -34,6 +34,19 @@
     --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 0 0% 14%;
     --sidebar-ring: 0 72% 51%;
+    
+    /* Admin Panel Theme - Professional Purple/Blue */
+    --admin-background: 240 10% 6%;
+    --admin-foreground: 0 0% 95%;
+    --admin-card: 240 10% 9%;
+    --admin-card-foreground: 0 0% 95%;
+    --admin-sidebar: 240 10% 7%;
+    --admin-primary: 265 83% 57%;
+    --admin-primary-foreground: 0 0% 100%;
+    --admin-accent: 265 30% 15%;
+    --admin-accent-foreground: 0 0% 95%;
+    --admin-muted-foreground: 240 5% 55%;
+    --admin-border: 240 10% 15%;
   }
 
   .dark {
