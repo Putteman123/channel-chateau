@@ -48,7 +48,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       activeSource: currentSource,
       credentials,
       preferTsLive: currentSource?.prefer_ts_live ?? true,
-      preferTsVod: currentSource?.prefer_ts_vod ?? false,
+      preferTsVod: currentSource?.prefer_ts_vod ?? true,
       isLoading,
       setActiveSourceId,
     }}>
