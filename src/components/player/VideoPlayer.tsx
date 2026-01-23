@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import videojs from 'video.js';
 import Player from 'video.js/dist/types/player';
 import 'video.js/dist/video-js.css';
@@ -14,6 +14,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+/** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
+export interface StreamHttpHeaders {
+  userAgent?: string;
+  referer?: string;
+}
+
 export interface VideoPlayerProps {
   src: string;
   poster?: string;
@@ -25,6 +31,8 @@ export interface VideoPlayerProps {
   autoPlay?: boolean;
   /** Original stream URL (before proxy) for external player fallback */
   originalStreamUrl?: string;
+  /** Custom HTTP headers from M3U metadata */
+  httpHeaders?: StreamHttpHeaders;
 }
 
 // Diagnostik för spelarfel
@@ -137,6 +145,7 @@ export function VideoPlayer({
   startPosition = 0,
   autoPlay = true,
   originalStreamUrl,
+  httpHeaders,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
@@ -153,24 +162,45 @@ export function VideoPlayer({
   
   const { isTvMode } = useSpatialNavigation();
 
+  // Build stream URL with custom headers if provided
+  const effectiveSrc = useMemo(() => {
+    if (!httpHeaders || (!httpHeaders.userAgent && !httpHeaders.referer)) {
+      return src;
+    }
+    
+    // If src is already a proxy URL, append header params
+    if (src.includes('/functions/v1/stream-proxy')) {
+      const headerParams = [];
+      if (httpHeaders.userAgent) headerParams.push(`userAgent=${encodeURIComponent(httpHeaders.userAgent)}`);
+      if (httpHeaders.referer) headerParams.push(`referer=${encodeURIComponent(httpHeaders.referer)}`);
+      
+      if (headerParams.length > 0) {
+        const separator = src.includes('?') ? '&' : '?';
+        return `${src}${separator}${headerParams.join('&')}`;
+      }
+    }
+    
+    return src;
+  }, [src, httpHeaders]);
+
   // Analyze stream URL and set diagnostics
   useEffect(() => {
-    if (src) {
-      const urlType = src.includes('.m3u8') ? 'HLS (.m3u8)' 
-        : src.includes('.ts') ? 'MPEG-TS (.ts)'
-        : src.includes('.mp4') ? 'MP4'
-        : src.includes('.mkv') ? 'MKV'
+    if (effectiveSrc) {
+      const urlType = effectiveSrc.includes('.m3u8') ? 'HLS (.m3u8)' 
+        : effectiveSrc.includes('.ts') ? 'MPEG-TS (.ts)'
+        : effectiveSrc.includes('.mp4') ? 'MP4'
+        : effectiveSrc.includes('.mkv') ? 'MKV'
         : 'Okänd';
       
-      const isProxied = src.includes('/functions/v1/stream-proxy');
-      const protocol = src.startsWith('https') ? 'https' : 'http';
+      const isProxied = effectiveSrc.includes('/functions/v1/stream-proxy');
+      const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
       const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
       
       // Extract original URL if proxied
-      let displayUrl = src;
+      let displayUrl = effectiveSrc;
       if (isProxied) {
         try {
-          const urlParam = new URL(src).searchParams.get('url');
+          const urlParam = new URL(effectiveSrc).searchParams.get('url');
           if (urlParam) {
             displayUrl = decodeURIComponent(urlParam);
           }
@@ -187,15 +217,18 @@ export function VideoPlayer({
         pageProtocol,
       });
       
-      console.log('[VideoPlayer] Stream URL:', src);
+      console.log('[VideoPlayer] Stream URL:', effectiveSrc);
       console.log('[VideoPlayer] Protocol check - Page:', pageProtocol, 'Stream:', protocol);
+      if (httpHeaders?.userAgent || httpHeaders?.referer) {
+        console.log('[VideoPlayer] Custom HTTP headers:', httpHeaders);
+      }
       
       // Pre-flight check for Mixed Content
       if (protocol === 'http' && pageProtocol === 'https:') {
         console.warn('[VideoPlayer] ⚠️ Mixed Content Warning: Attempting to load HTTP stream on HTTPS page');
       }
     }
-  }, [src]);
+  }, [effectiveSrc, httpHeaders]);
 
   // Determine source type
   const getSourceType = useCallback((url: string) => {
@@ -272,7 +305,7 @@ export function VideoPlayer({
 
   // Initialize player
   useEffect(() => {
-    if (!videoRef.current || !src) return;
+    if (!videoRef.current || !effectiveSrc) return;
     
     // Reset error state when source changes
     setPlayerError(null);
@@ -290,7 +323,7 @@ export function VideoPlayer({
         fluid: true,
         playsinline: true,
         poster: poster,
-        sources: [{ src, type: getSourceType(src) }],
+        sources: [{ src: effectiveSrc, type: getSourceType(effectiveSrc) }],
         html5: {
           vhs: {
             overrideNative: true,
@@ -340,7 +373,7 @@ export function VideoPlayer({
           httpStatus = parseInt(statusMatch[1]);
         }
         
-        const diagnosis = diagnoseError(src, error?.code, error?.message);
+        const diagnosis = diagnoseError(effectiveSrc, error?.code, error?.message);
         console.error('[VideoPlayer] Diagnosis:', diagnosis);
         setPlayerError({ ...diagnosis, httpStatus });
         
@@ -360,12 +393,12 @@ export function VideoPlayer({
     } else {
       // Update source if it changes
       const player = playerRef.current;
-      player.src({ src, type: getSourceType(src) });
+      player.src({ src: effectiveSrc, type: getSourceType(effectiveSrc) });
       if (poster) {
         player.poster(poster);
       }
     }
-  }, [src, poster, autoPlay, startPosition, getSourceType, onEnded, isTvMode]);
+  }, [effectiveSrc, poster, autoPlay, startPosition, getSourceType, onEnded, isTvMode]);
 
   // Progress tracking
   useEffect(() => {
@@ -575,7 +608,7 @@ export function VideoPlayer({
                 variant="secondary"
                 onClick={() => {
                   setPlayerError(null);
-                  playerRef.current?.src({ src, type: getSourceType(src) });
+                  playerRef.current?.src({ src: effectiveSrc, type: getSourceType(effectiveSrc) });
                   playerRef.current?.play();
                 }}
               >
