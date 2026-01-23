@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
 import { useFocusable } from '@/hooks/useFocusable';
+import { LazyImage } from './LazyImage';
 
 interface ContentCardProps {
   id: string;
@@ -78,23 +79,14 @@ export function ContentCard({
       role="button"
       tabIndex={isTvMode ? -1 : 0}
     >
-      {/* Poster */}
-      <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted">
-        {displayPoster ? (
-          <img
-            src={displayPoster}
-            alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-            loading="lazy"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/placeholder.svg';
-            }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-muted">
-            <span className="text-4xl text-muted-foreground">📺</span>
-          </div>
-        )}
+      {/* Poster with LazyImage */}
+      <div className="relative overflow-hidden rounded-lg">
+        <LazyImage
+          src={displayPoster}
+          alt={title}
+          aspectRatio="poster"
+          className="transition-transform duration-300 group-hover:scale-110"
+        />
 
         {/* Overlay on hover or focus */}
         <div className={cn(

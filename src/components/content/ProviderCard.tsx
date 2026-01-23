@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import { useFocusable } from '@/hooks/useFocusable';
+import { LazyImage } from './LazyImage';
 
 interface ProviderCardProps {
   name: string;
@@ -9,23 +10,72 @@ interface ProviderCardProps {
   count?: number;
 }
 
-// Provider brand colors mapping
-const providerColors: Record<string, string> = {
-  netflix: 'from-red-600 to-red-800',
-  hbo: 'from-purple-600 to-purple-900',
-  disney: 'from-blue-500 to-blue-700',
-  amazon: 'from-cyan-500 to-cyan-700',
-  prime: 'from-cyan-500 to-cyan-700',
-  apple: 'from-gray-700 to-gray-900',
-  hulu: 'from-green-500 to-green-700',
-  paramount: 'from-blue-600 to-blue-800',
-  peacock: 'from-yellow-500 to-orange-600',
-  max: 'from-blue-700 to-indigo-900',
-  crunchyroll: 'from-orange-500 to-orange-700',
-  showtime: 'from-red-700 to-red-900',
-  starz: 'from-gray-800 to-gray-950',
-  mubi: 'from-gray-700 to-gray-900',
-  criterion: 'from-amber-600 to-amber-800',
+// Provider brand colors mapping with more vibrant gradients
+const providerColors: Record<string, { gradient: string; glow: string }> = {
+  netflix: { 
+    gradient: 'from-red-600 via-red-700 to-red-900', 
+    glow: 'shadow-red-600/40' 
+  },
+  hbo: { 
+    gradient: 'from-purple-600 via-purple-700 to-purple-900', 
+    glow: 'shadow-purple-600/40' 
+  },
+  max: { 
+    gradient: 'from-blue-600 via-indigo-700 to-purple-900', 
+    glow: 'shadow-blue-600/40' 
+  },
+  disney: { 
+    gradient: 'from-blue-500 via-blue-600 to-blue-800', 
+    glow: 'shadow-blue-500/40' 
+  },
+  amazon: { 
+    gradient: 'from-cyan-500 via-cyan-600 to-cyan-800', 
+    glow: 'shadow-cyan-500/40' 
+  },
+  prime: { 
+    gradient: 'from-cyan-400 via-blue-500 to-blue-700', 
+    glow: 'shadow-cyan-400/40' 
+  },
+  apple: { 
+    gradient: 'from-gray-600 via-gray-700 to-gray-900', 
+    glow: 'shadow-gray-600/40' 
+  },
+  hulu: { 
+    gradient: 'from-green-400 via-green-500 to-green-700', 
+    glow: 'shadow-green-400/40' 
+  },
+  paramount: { 
+    gradient: 'from-blue-500 via-blue-600 to-blue-800', 
+    glow: 'shadow-blue-500/40' 
+  },
+  peacock: { 
+    gradient: 'from-yellow-400 via-orange-500 to-orange-700', 
+    glow: 'shadow-yellow-400/40' 
+  },
+  crunchyroll: { 
+    gradient: 'from-orange-400 via-orange-500 to-orange-700', 
+    glow: 'shadow-orange-400/40' 
+  },
+  showtime: { 
+    gradient: 'from-red-600 via-red-700 to-red-900', 
+    glow: 'shadow-red-600/40' 
+  },
+  starz: { 
+    gradient: 'from-gray-700 via-gray-800 to-gray-950', 
+    glow: 'shadow-gray-700/40' 
+  },
+  mubi: { 
+    gradient: 'from-gray-600 via-gray-700 to-gray-900', 
+    glow: 'shadow-gray-600/40' 
+  },
+  criterion: { 
+    gradient: 'from-amber-500 via-amber-600 to-amber-800', 
+    glow: 'shadow-amber-500/40' 
+  },
+  viaplay: { 
+    gradient: 'from-pink-500 via-pink-600 to-purple-700', 
+    glow: 'shadow-pink-500/40' 
+  },
 };
 
 // Get initials from provider name
@@ -37,8 +87,8 @@ function getInitials(name: string): string {
   return words.slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
-// Get gradient class for provider
-function getProviderGradient(name: string): string {
+// Get styles for provider
+function getProviderStyles(name: string): { gradient: string; glow: string } {
   const lowerName = name.toLowerCase();
   for (const [key, value] of Object.entries(providerColors)) {
     if (lowerName.includes(key)) {
@@ -46,7 +96,10 @@ function getProviderGradient(name: string): string {
     }
   }
   // Default gradient
-  return 'from-primary to-primary/80';
+  return { 
+    gradient: 'from-primary via-primary/90 to-primary/70', 
+    glow: 'shadow-primary/30' 
+  };
 }
 
 export function ProviderCard({
@@ -56,7 +109,7 @@ export function ProviderCard({
   onClick,
   count,
 }: ProviderCardProps) {
-  const gradient = getProviderGradient(name);
+  const styles = getProviderStyles(name);
   const initials = getInitials(name);
   
   // Spatial navigation support
@@ -69,57 +122,63 @@ export function ProviderCard({
       ref={ref}
       onClick={onClick}
       className={cn(
-        'group relative flex flex-col items-center gap-2 rounded-xl p-4 transition-all duration-200',
-        'hover:scale-105 hover:shadow-lg',
-        isSelected
-          ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-          : 'hover:ring-1 hover:ring-muted-foreground/30',
+        'group relative flex flex-col items-center gap-3 rounded-2xl p-4 transition-all duration-300',
+        'hover:scale-105 active:scale-95',
+        isSelected || isFocused
+          ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg'
+          : 'hover:shadow-md',
         isTvMode && 'focusable',
         isTvMode && isFocused && 'is-focused'
       )}
     >
-      {/* Provider Icon/Logo */}
+      {/* Provider Icon/Logo with glow effect */}
       <div
         className={cn(
-          'flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br shadow-md transition-transform',
-          gradient,
-          (isSelected || isFocused) && 'scale-110'
+          'relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg transition-all duration-300',
+          styles.gradient,
+          (isSelected || isFocused) && cn('scale-110 shadow-xl', styles.glow)
         )}
       >
+        {/* Shine effect */}
+        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 via-transparent to-transparent" />
+        
         {icon ? (
-          <img
+          <LazyImage
             src={icon}
             alt={name}
-            className="h-10 w-10 object-contain"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              e.currentTarget.nextElementSibling?.classList.remove('hidden');
-            }}
+            aspectRatio="square"
+            className="h-12 w-12 rounded-lg object-contain"
+            blurPlaceholder={false}
           />
-        ) : null}
-        <span
-          className={cn(
-            'text-xl font-bold text-white',
-            icon && 'hidden'
-          )}
-        >
-          {initials}
-        </span>
+        ) : (
+          <span className="relative text-2xl font-bold text-white drop-shadow-md">
+            {initials}
+          </span>
+        )}
       </div>
 
       {/* Provider Name */}
       <span className={cn(
-        'text-xs font-medium transition-colors',
+        'max-w-[80px] truncate text-xs font-medium transition-colors',
         isSelected || isFocused ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
       )}>
         {name}
       </span>
 
-      {/* Content Count Badge */}
-      {count !== undefined && (
-        <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+      {/* Content Count Badge with animation */}
+      {count !== undefined && count > 0 && (
+        <span className={cn(
+          'absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-[10px] font-bold transition-all',
+          'bg-primary text-primary-foreground shadow-md',
+          (isSelected || isFocused) && 'scale-110'
+        )}>
           {count > 999 ? '999+' : count}
         </span>
+      )}
+
+      {/* Selection indicator */}
+      {isSelected && (
+        <div className="absolute -bottom-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary" />
       )}
     </button>
   );
