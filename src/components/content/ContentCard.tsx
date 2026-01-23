@@ -2,6 +2,7 @@ import { Heart, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
 
 interface ContentCardProps {
   id: string;
@@ -15,6 +16,7 @@ interface ContentCardProps {
   progress?: number;
   onPlay?: () => void;
   onToggleFavorite?: () => void;
+  enableTMDB?: boolean;
 }
 
 export function ContentCard({
@@ -29,8 +31,23 @@ export function ContentCard({
   progress = 0,
   onPlay,
   onToggleFavorite,
+  enableTMDB = true,
 }: ContentCardProps) {
   const navigate = useNavigate();
+
+  // Fetch TMDB metadata for movies and series
+  const tmdbType = type === 'series' ? 'tv' : 'movie';
+  const shouldFetchTMDB = enableTMDB && type !== 'channel';
+  const { data: tmdbData } = useTMDBMetadata({
+    title,
+    type: tmdbType,
+    enabled: shouldFetchTMDB,
+  });
+
+  // Use TMDB data as fallback when Xtream data is missing or low quality
+  const displayPoster = (tmdbData?.poster && !poster) ? tmdbData.poster : poster;
+  const displayRating = rating || tmdbData?.rating;
+  const displayYear = year || tmdbData?.year;
 
   const handleClick = () => {
     if (onPlay) {
@@ -45,9 +62,9 @@ export function ContentCard({
     <div className="group relative card-hover">
       {/* Poster */}
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted">
-        {poster ? (
+        {displayPoster ? (
           <img
-            src={poster}
+            src={displayPoster}
             alt={title}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
             loading="lazy"
@@ -110,12 +127,12 @@ export function ContentCard({
       <div className="mt-2 space-y-1">
         <h3 className="line-clamp-2 text-sm font-medium leading-tight">{title}</h3>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {rating && Number(rating) > 0 && (
+          {displayRating && Number(displayRating) > 0 && (
             <span className="flex items-center gap-1">
-              ⭐ {Number(rating).toFixed(1)}
+              ⭐ {Number(displayRating).toFixed(1)}
             </span>
           )}
-          {year && <span>{year}</span>}
+          {displayYear && <span>{displayYear}</span>}
           {category && <span>{category}</span>}
         </div>
       </div>
