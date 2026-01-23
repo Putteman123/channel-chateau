@@ -14,7 +14,7 @@ import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
 import { VirtualizedGrid } from '@/components/content/VirtualizedGrid';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { VideoPlayer, StreamHttpHeaders } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -120,12 +120,24 @@ export default function LiveTV() {
     // For M3U channels, use the stream_url directly (through proxy)
     if ('stream_url' in channel && channel.stream_url) {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      // Base proxy URL - headers will be added separately by VideoPlayer
       return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(channel.stream_url)}`;
     }
     // For Xtream channels
     if (!credentials) return '';
     return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { preferTs: preferTsLive });
   }, [credentials, preferTsLive]);
+
+  // Extract HTTP headers from M3U channel for VideoPlayer
+  const getHttpHeaders = useCallback((channel: UnifiedChannel) => {
+    if ('http' in channel && channel.http) {
+      const headers: { userAgent?: string; referer?: string } = {};
+      if (channel.http['user-agent']) headers.userAgent = channel.http['user-agent'];
+      if (channel.http.referrer) headers.referer = channel.http.referrer;
+      return Object.keys(headers).length > 0 ? headers : undefined;
+    }
+    return undefined;
+  }, []);
 
   const getOriginalStreamUrl = useCallback((channel: UnifiedChannel) => {
     // For M3U channels, return the direct URL
@@ -290,6 +302,7 @@ export default function LiveTV() {
             originalStreamUrl={getOriginalStreamUrl(playingChannel)}
             title={playingChannel.name}
             poster={playingChannel.stream_icon}
+            httpHeaders={getHttpHeaders(playingChannel)}
             onClose={() => setPlayingChannel(null)}
           />
         </div>
@@ -302,6 +315,7 @@ export default function LiveTV() {
                 originalStreamUrl={getOriginalStreamUrl(playingChannel)}
                 title={playingChannel.name}
                 poster={playingChannel.stream_icon}
+                httpHeaders={getHttpHeaders(playingChannel)}
                 onClose={() => setPlayingChannel(null)}
               />
             )}

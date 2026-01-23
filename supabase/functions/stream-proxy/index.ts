@@ -31,14 +31,20 @@ serve(async (req) => {
 
   try {
     let streamUrl: string | null = null;
+    let customUserAgent: string | null = null;
+    let customReferer: string | null = null;
 
     // Support both GET (query param) and POST (body)
     if (req.method === "GET") {
       const url = new URL(req.url);
       streamUrl = url.searchParams.get("url");
+      customUserAgent = url.searchParams.get("userAgent");
+      customReferer = url.searchParams.get("referer");
     } else if (req.method === "POST") {
       const body = await req.json();
       streamUrl = body.url;
+      customUserAgent = body.userAgent || null;
+      customReferer = body.referer || null;
     }
 
     if (!streamUrl) {
@@ -50,9 +56,15 @@ serve(async (req) => {
 
     // Decode URL if encoded
     const decodedUrl = decodeURIComponent(streamUrl);
+    
+    // Log with custom headers info
+    const hasCustomHeaders = customUserAgent || customReferer;
     console.log(`[stream-proxy] Proxying: ${redactUrl(decodedUrl).substring(0, 100)}...`);
+    if (hasCustomHeaders) {
+      console.log(`[stream-proxy] Custom headers: UA=${customUserAgent ? 'yes' : 'no'}, Referer=${customReferer ? 'yes' : 'no'}`);
+    }
 
-    // Extract origin from stream URL for Referer/Origin headers
+    // Extract origin from stream URL for Referer/Origin headers (fallback)
     let streamOrigin = "";
     try {
       streamOrigin = new URL(decodedUrl).origin;
@@ -60,15 +72,25 @@ serve(async (req) => {
       // Invalid URL, skip origin headers
     }
 
-    // Build fetch headers to mimic VLC player
+    // Build fetch headers - use custom values if provided, otherwise defaults
     const fetchHeaders: Record<string, string> = {
-      "User-Agent": "VLC/3.0.20 LibVLC/3.0.20",
+      "User-Agent": customUserAgent || "VLC/3.0.20 LibVLC/3.0.20",
       "Accept": "*/*",
       "Accept-Language": "en-US,en;q=0.9",
       "Connection": "keep-alive",
     };
 
-    if (streamOrigin) {
+    // Use custom referer if provided, otherwise fall back to stream origin
+    if (customReferer) {
+      fetchHeaders["Referer"] = customReferer;
+      // Extract origin from custom referer
+      try {
+        const refererOrigin = new URL(customReferer).origin;
+        fetchHeaders["Origin"] = refererOrigin;
+      } catch {
+        fetchHeaders["Origin"] = customReferer;
+      }
+    } else if (streamOrigin) {
       fetchHeaders["Referer"] = streamOrigin + "/";
       fetchHeaders["Origin"] = streamOrigin;
     }
@@ -137,6 +159,12 @@ serve(async (req) => {
       const baseUrl = decodedUrl.substring(0, decodedUrl.lastIndexOf("/") + 1);
       const proxyBase = req.url.split("?")[0];
       
+      // Build query params to propagate custom headers
+      const headerParams = [];
+      if (customUserAgent) headerParams.push(`userAgent=${encodeURIComponent(customUserAgent)}`);
+      if (customReferer) headerParams.push(`referer=${encodeURIComponent(customReferer)}`);
+      const headerSuffix = headerParams.length > 0 ? `&${headerParams.join('&')}` : '';
+
       // Rewrite URLs in playlist
       const rewrittenPlaylist = text.split("\n").map(line => {
         const trimmed = line.trim();
@@ -149,19 +177,19 @@ serve(async (req) => {
           if (trimmed.includes('URI="')) {
             return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
               const fullUrl = uri.startsWith("http") ? uri : baseUrl + uri;
-              return `URI="${proxyBase}?url=${encodeURIComponent(fullUrl)}"`;
+              return `URI="${proxyBase}?url=${encodeURIComponent(fullUrl)}${headerSuffix}"`;
             });
           }
           return line;
         }
         
-        // Rewrite segment URLs
+        // Rewrite segment URLs - include custom headers for each segment
         if (trimmed.startsWith("http")) {
-          return `${proxyBase}?url=${encodeURIComponent(trimmed)}`;
+          return `${proxyBase}?url=${encodeURIComponent(trimmed)}${headerSuffix}`;
         } else if (trimmed.length > 0) {
           // Relative URL
           const fullUrl = baseUrl + trimmed;
-          return `${proxyBase}?url=${encodeURIComponent(fullUrl)}`;
+          return `${proxyBase}?url=${encodeURIComponent(fullUrl)}${headerSuffix}`;
         }
         
         return line;
