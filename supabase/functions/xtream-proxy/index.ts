@@ -15,7 +15,17 @@ function normalizeServerUrl(raw: string): { baseUrl: string; hadProtocol: boolea
 
 function buildCandidateBaseUrls(serverUrl: string): string[] {
   const { baseUrl, hadProtocol } = normalizeServerUrl(serverUrl);
-  if (hadProtocol) return [baseUrl];
+
+  // If the user provided a protocol, still try a sensible fallback:
+  // - If they provided http://, prefer trying https:// first (many providers support https but users paste http)
+  // - If they provided https://, only try that.
+  if (hadProtocol) {
+    if (baseUrl.startsWith("http://")) {
+      const httpsUrl = `https://${baseUrl.slice("http://".length)}`;
+      return [httpsUrl, baseUrl];
+    }
+    return [baseUrl];
+  }
 
   // If protocol isn't provided, prefer HTTPS first (many providers support it).
   // We'll fall back to HTTP if HTTPS fails.
@@ -70,7 +80,8 @@ serve(async (req) => {
 
     // Try up to 2 candidates (https then http when protocol not provided)
     // and for each candidate do 1 retry on transient network errors.
-    const timeoutMs = 15_000;
+    // Some providers are slow from datacenter IPs; keep this high enough to avoid false negatives.
+    const timeoutMs = 30_000;
     let lastNetworkError: unknown = null;
     let response: Response | null = null;
     let usedUrl: string | null = null;
