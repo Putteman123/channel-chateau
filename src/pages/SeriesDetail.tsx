@@ -38,6 +38,14 @@ export default function SeriesDetail() {
     enabled: !!credentials && !!id,
   });
 
+  // Fetch TMDB metadata for enhanced backdrop and description
+  // MUST be called before any early returns to follow React's rules of hooks
+  const { data: tmdbData } = useTMDBMetadata({
+    title: seriesInfo?.info?.name || '',
+    type: 'tv',
+    enabled: !!seriesInfo?.info?.name,
+  });
+
   const handleToggleFavorite = () => {
     if (!activeSource || !seriesInfo || !id) return;
     
@@ -103,13 +111,6 @@ export default function SeriesDetail() {
   const { info, seasons, episodes } = seriesInfo;
   const seasonNumbers = Object.keys(episodes).sort((a, b) => parseInt(a) - parseInt(b));
   const isFav = id ? isFavorite(activeSource!.id, 'series', id) : false;
-
-  // Fetch TMDB metadata for enhanced backdrop and description
-  const { data: tmdbData } = useTMDBMetadata({
-    title: info.name,
-    type: 'tv',
-    enabled: !!info.name,
-  });
 
   // Use TMDB data as fallback
   const displayBackdrop = tmdbData?.backdrop || info.backdrop_path?.[0];
