@@ -14,7 +14,7 @@ export default function MoviePlayer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { activeSource, credentials, preferTsVod } = useStream();
+  const { activeSource, credentials, preferTsVod, useProxy } = useStream();
   const { updateHistory, getProgress } = useWatchHistory(activeSource?.id);
 
   // Fetch movies list to find the current movie
@@ -46,7 +46,8 @@ export default function MoviePlayer() {
     const extension = movie?.container_extension || 'mp4';
     return XtreamAPI.buildMovieStreamUrl(credentials, parseInt(id), { 
       extension, 
-      preferTs: preferTsVod 
+      preferTs: preferTsVod,
+      useProxy 
     });
   };
 
