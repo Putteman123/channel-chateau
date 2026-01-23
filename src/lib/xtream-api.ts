@@ -176,22 +176,59 @@ export function buildApiUrl(creds: XtreamCredentials, action?: string): string {
   return url;
 }
 
+// Check if we should use proxy (HTTP stream on HTTPS page)
+function shouldUseProxy(url: string): boolean {
+  if (typeof window === 'undefined') return false;
+  return url.startsWith('http://') && window.location.protocol === 'https:';
+}
+
+// Wrap URL through stream proxy
+function proxyStreamUrl(url: string): string {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) {
+    console.warn('[XtreamAPI] VITE_SUPABASE_URL not set, cannot use stream proxy');
+    return url;
+  }
+  return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(url)}`;
+}
+
 // Build stream URL for live channels
-export function buildLiveStreamUrl(creds: XtreamCredentials, streamId: number): string {
+export function buildLiveStreamUrl(creds: XtreamCredentials, streamId: number, useProxy: boolean = true): string {
   const base = buildBaseUrl(creds);
-  return `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.m3u8`;
+  const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.m3u8`;
+  
+  if (useProxy && shouldUseProxy(directUrl)) {
+    console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 50) + '...');
+    return proxyStreamUrl(directUrl);
+  }
+  
+  return directUrl;
 }
 
 // Build stream URL for movies
-export function buildMovieStreamUrl(creds: XtreamCredentials, streamId: number, extension: string = 'mp4'): string {
+export function buildMovieStreamUrl(creds: XtreamCredentials, streamId: number, extension: string = 'mp4', useProxy: boolean = true): string {
   const base = buildBaseUrl(creds);
-  return `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
+  const directUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
+  
+  if (useProxy && shouldUseProxy(directUrl)) {
+    console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 50) + '...');
+    return proxyStreamUrl(directUrl);
+  }
+  
+  return directUrl;
 }
 
 // Build stream URL for series episodes
-export function buildSeriesStreamUrl(creds: XtreamCredentials, episodeId: string, extension: string = 'mp4'): string {
+export function buildSeriesStreamUrl(creds: XtreamCredentials, episodeId: string, extension: string = 'mp4', useProxy: boolean = true): string {
   const base = buildBaseUrl(creds);
-  return `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.${extension}`;
+  const directUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.${extension}`;
+  
+  if (useProxy && shouldUseProxy(directUrl)) {
+    console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 50) + '...');
+    return proxyStreamUrl(directUrl);
+  }
+  
+  return directUrl;
 }
 
 // Proxy API call through edge function to avoid CORS/Mixed Content issues
