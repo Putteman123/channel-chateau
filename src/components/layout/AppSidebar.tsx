@@ -1,4 +1,4 @@
-import { Home, Tv, Film, PlayCircle, Heart, History, Settings, LogOut, Plus } from 'lucide-react';
+import { Home, Tv, Film, PlayCircle, Heart, History, Settings, LogOut, Plus, Layers } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,6 +31,7 @@ const mainNavItems = [
   { titleKey: 'nav.liveTV', url: '/live', icon: Tv },
   { titleKey: 'nav.movies', url: '/movies', icon: Film },
   { titleKey: 'nav.series', url: '/series', icon: PlayCircle },
+  { titleKey: 'nav.streamingHub', url: '/streaming-hub', icon: Layers },
 ];
 
 const personalNavItems = [

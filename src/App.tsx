@@ -14,6 +14,7 @@ import Browse from "./pages/Browse";
 import LiveTV from "./pages/LiveTV";
 import Movies from "./pages/Movies";
 import Series from "./pages/Series";
+import StreamingHub from "./pages/StreamingHub";
 import SeriesDetail from "./pages/SeriesDetail";
 import Favorites from "./pages/Favorites";
 import ContinueWatching from "./pages/ContinueWatching";
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/live" element={<LiveTV />} />
               <Route path="/movies" element={<Movies />} />
               <Route path="/series" element={<Series />} />
+              <Route path="/streaming-hub" element={<StreamingHub />} />
               <Route path="/series/:id" element={<SeriesDetail />} />
               <Route path="/favorites" element={<Favorites />} />
               <Route path="/continue" element={<ContinueWatching />} />

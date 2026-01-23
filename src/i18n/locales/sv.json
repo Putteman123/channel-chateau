@@ -45,12 +45,20 @@
     "liveTV": "Live TV",
     "movies": "Filmer",
     "series": "Serier",
+    "streamingHub": "Streaming Hub",
     "favorites": "Favoriter",
     "continueWatching": "Fortsätt titta",
     "settings": "Inställningar",
     "profile": "Profil",
     "sources": "Streamkällor",
     "language": "Språk"
+  },
+  "streamingHub": {
+    "title": "Streaming Hub",
+    "description": "Bläddra innehåll efter streamingtjänst",
+    "providers": "Streamingtjänster",
+    "searchContent": "Sök filmer och serier...",
+    "allProviders": "Alla tjänster"
   },
   "browse": {
     "title": "Utforska",
