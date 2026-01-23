@@ -7,6 +7,7 @@ interface StreamContextType {
   activeSource: StreamSource | undefined;
   credentials: XtreamCredentials | null;
   preferTsLive: boolean;
+  preferTsVod: boolean;
   isLoading: boolean;
   setActiveSourceId: (id: string) => void;
 }
@@ -47,6 +48,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       activeSource: currentSource,
       credentials,
       preferTsLive: currentSource?.prefer_ts_live ?? true,
+      preferTsVod: currentSource?.prefer_ts_vod ?? false,
       isLoading,
       setActiveSourceId,
     }}>

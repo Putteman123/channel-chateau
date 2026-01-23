@@ -16,7 +16,7 @@ import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function SeriesDetail() {
   const { id } = useParams<{ id: string }>();
-  const { activeSource, credentials } = useStream();
+  const { activeSource, credentials, preferTsVod } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { updateHistory, getProgress } = useWatchHistory(activeSource?.id);
   
@@ -64,7 +64,10 @@ export default function SeriesDetail() {
 
   const getStreamUrl = (episodeId: string, extension: string) => {
     if (!credentials) return '';
-    return XtreamAPI.buildSeriesStreamUrl(credentials, episodeId, extension);
+    return XtreamAPI.buildSeriesStreamUrl(credentials, episodeId, { 
+      extension, 
+      preferTs: preferTsVod 
+    });
   };
 
   const handleProgress = (currentTime: number, duration: number) => {

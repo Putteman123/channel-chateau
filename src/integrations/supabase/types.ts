@@ -94,6 +94,7 @@ export type Database = {
           name: string
           password: string
           prefer_ts_live: boolean
+          prefer_ts_vod: boolean
           server_url: string
           updated_at: string
           user_id: string
@@ -107,6 +108,7 @@ export type Database = {
           name?: string
           password: string
           prefer_ts_live?: boolean
+          prefer_ts_vod?: boolean
           server_url: string
           updated_at?: string
           user_id: string
@@ -120,6 +122,7 @@ export type Database = {
           name?: string
           password?: string
           prefer_ts_live?: boolean
+          prefer_ts_vod?: boolean
           server_url?: string
           updated_at?: string
           user_id?: string
