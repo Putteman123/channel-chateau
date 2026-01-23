@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio } from 'lucide-react';
+import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar } from 'lucide-react';
 import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import * as XtreamAPI from '@/lib/xtream-api';
+import { SubscriptionBadge } from '@/components/subscription/SubscriptionBadge';
+import { parseXtreamExpDate } from '@/lib/subscription-utils';
 
 // Xtream schema
 const xtreamSchema = z.object({
@@ -37,6 +39,7 @@ const xtreamSchema = z.object({
 const m3uSchema = z.object({
   name: z.string().min(1, 'Namn krävs').max(50),
   m3u_url: z.string().min(1, 'M3U URL krävs').url('Ange en giltig URL'),
+  expires_at: z.string().optional(),
 });
 
 type XtreamForm = z.infer<typeof xtreamSchema>;
@@ -65,6 +68,7 @@ export default function Sources() {
     defaultValues: {
       name: '',
       m3u_url: '',
+      expires_at: '',
     },
   });
 
@@ -83,6 +87,7 @@ export default function Sources() {
         m3uForm.reset({
           name: editingSource.name,
           m3u_url: editingSource.m3u_url || '',
+          expires_at: editingSource.expires_at ? editingSource.expires_at.split('T')[0] : '',
         });
         setAddSourceType('m3u');
       }
@@ -92,9 +97,11 @@ export default function Sources() {
 
   const resetForms = () => {
     xtreamForm.reset({ name: '', server_url: '', username: '', password: '' });
-    m3uForm.reset({ name: '', m3u_url: '' });
+    m3uForm.reset({ name: '', m3u_url: '', expires_at: '' });
     setConnectionStatus('idle');
   };
+
+  const [lastAuthResult, setLastAuthResult] = useState<XtreamAPI.XtreamAuthInfo | null>(null);
 
   const testXtreamConnection = async () => {
     const values = xtreamForm.getValues();
@@ -105,13 +112,15 @@ export default function Sources() {
 
     setIsTestingConnection(true);
     setConnectionStatus('idle');
+    setLastAuthResult(null);
 
     try {
-      await XtreamAPI.authenticate({
+      const authResult = await XtreamAPI.authenticate({
         serverUrl: values.server_url,
         username: values.username,
         password: values.password,
       });
+      setLastAuthResult(authResult);
       setConnectionStatus('success');
       toast.success('Anslutning lyckades!');
     } catch (error: unknown) {
@@ -170,6 +179,15 @@ export default function Sources() {
 
   const onSubmitXtreamAdd = async (data: XtreamForm) => {
     try {
+      // Parse expires_at from auth result if available
+      let expiresAt: string | undefined;
+      if (lastAuthResult?.user_info?.exp_date) {
+        const expDate = parseXtreamExpDate(lastAuthResult.user_info.exp_date);
+        if (expDate) {
+          expiresAt = expDate.toISOString();
+        }
+      }
+
       await addSource.mutateAsync({
         source_type: 'xtream',
         name: data.name,
@@ -177,9 +195,11 @@ export default function Sources() {
         username: data.username,
         password: data.password,
         is_active: sources.length === 0,
+        expires_at: expiresAt,
       });
       setIsAddDialogOpen(false);
       resetForms();
+      setLastAuthResult(null);
     } catch {
       // Error handled by mutation
     }
@@ -192,6 +212,7 @@ export default function Sources() {
         name: data.name,
         m3u_url: data.m3u_url,
         is_active: sources.length === 0,
+        expires_at: data.expires_at ? new Date(data.expires_at).toISOString() : undefined,
       });
       setIsAddDialogOpen(false);
       resetForms();
@@ -204,15 +225,26 @@ export default function Sources() {
     if (!editingSource) return;
     
     try {
+      // Parse expires_at from auth result if a new test was done
+      let expiresAt: string | undefined;
+      if (lastAuthResult?.user_info?.exp_date) {
+        const expDate = parseXtreamExpDate(lastAuthResult.user_info.exp_date);
+        if (expDate) {
+          expiresAt = expDate.toISOString();
+        }
+      }
+
       await updateSource.mutateAsync({
         id: editingSource.id,
         name: data.name,
         server_url: data.server_url,
         username: data.username,
         password: data.password,
+        ...(expiresAt && { expires_at: expiresAt }),
       });
       setEditingSource(null);
       resetForms();
+      setLastAuthResult(null);
     } catch {
       // Error handled by mutation
     }
@@ -226,6 +258,7 @@ export default function Sources() {
         id: editingSource.id,
         name: data.name,
         m3u_url: data.m3u_url,
+        expires_at: data.expires_at ? new Date(data.expires_at).toISOString() : null,
       });
       setEditingSource(null);
       resetForms();
@@ -422,6 +455,24 @@ export default function Sources() {
                       )}
                     />
 
+                    <FormField
+                      control={m3uForm.control}
+                      name="expires_at"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4" />
+                            Utgångsdatum (valfritt)
+                          </FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} />
+                          </FormControl>
+                          <FormDescription>När ditt abonnemang går ut</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
                     <div className="flex gap-2">
                       <Button
                         type="button"
@@ -587,6 +638,24 @@ export default function Sources() {
                   )}
                 />
 
+                <FormField
+                  control={m3uForm.control}
+                  name="expires_at"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Utgångsdatum (valfritt)
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormDescription>När ditt abonnemang går ut</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -704,6 +773,14 @@ export default function Sources() {
                 </div>
               </CardHeader>
               <CardContent>
+                {/* Subscription Status */}
+                <div className="mb-4 flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-medium">Abonnemangsstatus</div>
+                  </div>
+                  <SubscriptionBadge expiresAt={source.expires_at} />
+                </div>
+
                 <dl className="grid grid-cols-2 gap-2 text-sm">
                   {source.source_type === 'xtream' && source.username && (
                     <div>

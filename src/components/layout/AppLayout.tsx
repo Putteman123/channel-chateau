@@ -2,8 +2,9 @@ import { useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
-import { StreamProvider } from '@/contexts/StreamContext';
+import { StreamProvider, useStream } from '@/contexts/StreamContext';
 import { SpatialNavigationProvider, useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
+import { ExpiryWarningBanner } from '@/components/subscription/ExpiryWarningBanner';
 import { Tv } from 'lucide-react';
 
 function TvModeIndicator() {
@@ -22,6 +23,7 @@ function TvModeIndicator() {
 function AppLayoutContent() {
   const navigate = useNavigate();
   const { isTvMode } = useSpatialNavigation();
+  const { sources } = useStream();
 
   // Handle back navigation in TV mode
   useEffect(() => {
@@ -47,7 +49,10 @@ function AppLayoutContent() {
             )}
           </header>
           <div className="p-6">
-            <Outlet />
+            <ExpiryWarningBanner sources={sources} />
+            <div className="mt-4">
+              <Outlet />
+            </div>
           </div>
         </main>
       </div>

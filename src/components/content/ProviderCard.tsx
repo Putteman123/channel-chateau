@@ -1,6 +1,8 @@
 import { cn } from '@/lib/utils';
 import { useFocusable } from '@/hooks/useFocusable';
 import { LazyImage } from './LazyImage';
+import { getSubscriptionInfo, getStatusStyles } from '@/lib/subscription-utils';
+import { AlertTriangle } from 'lucide-react';
 
 interface ProviderCardProps {
   name: string;
@@ -8,6 +10,7 @@ interface ProviderCardProps {
   isSelected: boolean;
   onClick: () => void;
   count?: number;
+  expiresAt?: string | null;
 }
 
 // Provider brand colors mapping with more vibrant gradients
@@ -108,9 +111,12 @@ export function ProviderCard({
   isSelected,
   onClick,
   count,
+  expiresAt,
 }: ProviderCardProps) {
   const styles = getProviderStyles(name);
   const initials = getInitials(name);
+  const subscriptionInfo = getSubscriptionInfo(expiresAt ?? null);
+  const isExpired = subscriptionInfo.status === 'expired';
   
   // Spatial navigation support
   const { ref, isFocused, isTvMode } = useFocusable<HTMLButtonElement>({
@@ -128,7 +134,8 @@ export function ProviderCard({
           ? 'ring-2 ring-primary ring-offset-2 ring-offset-background shadow-lg'
           : 'hover:shadow-md',
         isTvMode && 'focusable',
-        isTvMode && isFocused && 'is-focused'
+        isTvMode && isFocused && 'is-focused',
+        isExpired && 'opacity-60'
       )}
     >
       {/* Provider Icon/Logo with glow effect */}
@@ -136,7 +143,8 @@ export function ProviderCard({
         className={cn(
           'relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg transition-all duration-300',
           styles.gradient,
-          (isSelected || isFocused) && cn('scale-110 shadow-xl', styles.glow)
+          (isSelected || isFocused) && cn('scale-110 shadow-xl', styles.glow),
+          isExpired && 'grayscale'
         )}
       >
         {/* Shine effect */}
@@ -165,6 +173,16 @@ export function ProviderCard({
         {name}
       </span>
 
+      {/* Subscription Status (small text under name) */}
+      {expiresAt && (
+        <span className={cn(
+          'text-[10px]',
+          getStatusStyles(subscriptionInfo.status).textClass
+        )}>
+          {subscriptionInfo.statusText}
+        </span>
+      )}
+
       {/* Content Count Badge with animation */}
       {count !== undefined && count > 0 && (
         <span className={cn(
@@ -179,6 +197,13 @@ export function ProviderCard({
       {/* Selection indicator */}
       {isSelected && (
         <div className="absolute -bottom-1 left-1/2 h-1 w-8 -translate-x-1/2 rounded-full bg-primary" />
+      )}
+
+      {/* Expired warning icon */}
+      {isExpired && (
+        <div className="absolute -left-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-md">
+          <AlertTriangle className="h-3.5 w-3.5" />
+        </div>
       )}
     </button>
   );
