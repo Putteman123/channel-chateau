@@ -30,6 +30,15 @@ function diagnoseError(src: string, errorCode?: number, errorMessage?: string): 
   const isHttpSource = src.startsWith('http://');
   const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
   
+  // Check for provider blocking (HTTP 458 or similar)
+  if (errorMessage?.includes('458') || errorMessage?.includes('blocked')) {
+    return {
+      type: 'network',
+      message: 'Leverantören blockerar uppspelning',
+      details: 'Din IPTV-leverantör tillåter eventuellt inte uppspelning via proxy. Kontakta din leverantör eller prova igen senare.',
+    };
+  }
+  
   // Mixed Content detection
   if (isHttpSource && isHttpsPage) {
     return {
