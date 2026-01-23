@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
@@ -10,6 +10,7 @@ import { ProviderCard } from '@/components/content/ProviderCard';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
+import { VirtualizedGrid } from '@/components/content/VirtualizedGrid';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -323,47 +324,43 @@ export default function StreamingHub() {
         ) : (
           <>
             <TabsContent value="movies" className="mt-6">
-              {filteredMovies.length === 0 ? (
-                <p className="py-8 text-center text-muted-foreground">{t('movies.noMovies')}</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {filteredMovies.map((movie) => (
-                    <ContentCard
-                      key={movie.stream_id}
-                      id={String(movie.stream_id)}
-                      title={movie.name}
-                      poster={movie.stream_icon}
-                      type="movie"
-                      rating={movie.rating_5based}
-                      progress={getProgress(activeSource!.id, 'movie', String(movie.stream_id))}
-                      isFavorite={isFavorite(activeSource!.id, 'movie', String(movie.stream_id))}
-                      onPlay={() => setSelectedMovie(movie)}
-                      onToggleFavorite={() => handleToggleFavorite('movie', String(movie.stream_id), movie.name, movie.stream_icon)}
-                    />
-                  ))}
-                </div>
-              )}
+              <VirtualizedGrid
+                items={filteredMovies}
+                keyExtractor={(movie) => movie.stream_id}
+                emptyMessage={t('movies.noMovies')}
+                renderItem={(movie) => (
+                  <ContentCard
+                    id={String(movie.stream_id)}
+                    title={movie.name}
+                    poster={movie.stream_icon}
+                    type="movie"
+                    rating={movie.rating_5based}
+                    progress={getProgress(activeSource!.id, 'movie', String(movie.stream_id))}
+                    isFavorite={isFavorite(activeSource!.id, 'movie', String(movie.stream_id))}
+                    onPlay={() => setSelectedMovie(movie)}
+                    onToggleFavorite={() => handleToggleFavorite('movie', String(movie.stream_id), movie.name, movie.stream_icon)}
+                  />
+                )}
+              />
             </TabsContent>
 
             <TabsContent value="series" className="mt-6">
-              {filteredSeries.length === 0 ? (
-                <p className="py-8 text-center text-muted-foreground">{t('series.noSeries')}</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {filteredSeries.map((s) => (
-                    <ContentCard
-                      key={s.series_id}
-                      id={String(s.series_id)}
-                      title={s.name}
-                      poster={s.cover}
-                      type="series"
-                      rating={s.rating_5based}
-                      isFavorite={isFavorite(activeSource!.id, 'series', String(s.series_id))}
-                      onToggleFavorite={() => handleToggleFavorite('series', String(s.series_id), s.name, s.cover)}
-                    />
-                  ))}
-                </div>
-              )}
+              <VirtualizedGrid
+                items={filteredSeries}
+                keyExtractor={(s) => s.series_id}
+                emptyMessage={t('series.noSeries')}
+                renderItem={(s) => (
+                  <ContentCard
+                    id={String(s.series_id)}
+                    title={s.name}
+                    poster={s.cover}
+                    type="series"
+                    rating={s.rating_5based}
+                    isFavorite={isFavorite(activeSource!.id, 'series', String(s.series_id))}
+                    onToggleFavorite={() => handleToggleFavorite('series', String(s.series_id), s.name, s.cover)}
+                  />
+                )}
+              />
             </TabsContent>
           </>
         )}
