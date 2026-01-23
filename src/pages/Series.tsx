@@ -8,6 +8,7 @@ import { ContentCard } from '@/components/content/ContentCard';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
+import { LoadError } from '@/components/content/LoadError';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Series() {
@@ -30,7 +31,7 @@ export default function Series() {
   });
 
   // Fetch series
-  const { data: series, isLoading } = useQuery({
+  const { data: series, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['series', credentials?.serverUrl, selectedCategory],
     queryFn: async () => {
       if (!credentials) return [];
@@ -104,6 +105,8 @@ export default function Series() {
 
       {isLoading ? (
         <ContentSkeleton count={12} />
+      ) : error ? (
+        <LoadError onRetry={() => refetch()} isRetrying={isRefetching} />
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {filteredSeries.map((s) => (

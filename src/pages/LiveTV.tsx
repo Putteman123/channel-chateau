@@ -10,6 +10,7 @@ import { EPGDrawer } from '@/components/epg/EPGDrawer';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
+import { LoadError } from '@/components/content/LoadError';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -39,7 +40,7 @@ export default function LiveTV() {
   });
 
   // Fetch channels
-  const { data: channels, isLoading } = useQuery({
+  const { data: channels, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ['live-channels', credentials?.serverUrl, selectedCategory],
     queryFn: async () => {
       if (!credentials) return [];
@@ -138,6 +139,8 @@ export default function LiveTV() {
 
       {isLoading ? (
         <ContentSkeleton type="channel" count={12} />
+      ) : error ? (
+        <LoadError onRetry={() => refetch()} isRetrying={isRefetching} />
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filteredChannels.map((channel) => (
