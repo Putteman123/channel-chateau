@@ -469,18 +469,38 @@ export function VideoPlayer({
       {/* Error Display */}
       {playerError && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/90 p-4">
-          <Alert variant="destructive" className="max-w-md bg-destructive/20 border-destructive">
-            <AlertTriangle className="h-5 w-5" />
-            <AlertTitle className="text-white">{playerError.message}</AlertTitle>
-            <AlertDescription className="text-white/80">
-              {playerError.details}
-              {playerError.type === 'mixed-content' && (
-                <div className="mt-3 text-xs opacity-70">
-                  <strong>Tips:</strong> Klicka på 🔒 i adressfältet → Webbplatsinställningar → Tillåt osäkert innehåll
+          <div className="max-w-lg w-full space-y-4">
+            <Alert variant="destructive" className="bg-destructive/20 border-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              <AlertTitle className="text-white">{playerError.message}</AlertTitle>
+              <AlertDescription className="text-white/80">
+                {playerError.details}
+                {playerError.type === 'mixed-content' && (
+                  <div className="mt-3 text-xs opacity-70">
+                    <strong>Tips:</strong> Klicka på 🔒 i adressfältet → Webbplatsinställningar → Tillåt osäkert innehåll
+                  </div>
+                )}
+              </AlertDescription>
+            </Alert>
+
+            {/* Provider blocking info */}
+            {(playerError.httpStatus === 502 || playerError.message.includes('blockerar')) && (
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+                <h4 className="font-medium text-yellow-400 mb-2">
+                  Din leverantör blockerar streams via proxy
+                </h4>
+                <p className="text-sm text-yellow-300/80 mb-3">
+                  Metadata laddas, men videostreams blockeras från datacenter-IP:er. 
+                  Du kan använda en extern spelare istället.
+                </p>
+                <div className="text-xs text-yellow-300/60 space-y-1">
+                  <p>• Stäng av "Använd proxy" i Inställningar → Källor</p>
+                  <p>• Öppna streamen i VLC, IPTV Smarters eller liknande</p>
                 </div>
-              )}
-            </AlertDescription>
-            <div className="mt-4 flex flex-wrap gap-2">
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 justify-center">
               <Button 
                 size="sm" 
                 variant="secondary"
@@ -496,9 +516,9 @@ export function VideoPlayer({
               {/* External Player Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="gap-1">
+                  <Button size="sm" variant="default" className="gap-1">
                     <ExternalLink className="h-3.5 w-3.5" />
-                    Öppna externt
+                    Öppna i extern spelare
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
@@ -508,7 +528,7 @@ export function VideoPlayer({
                       window.open(buildExternalPlayerUrl(url, 'vlc'), '_blank');
                     }}
                   >
-                    Öppna i VLC
+                    🎬 Öppna i VLC
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -516,7 +536,7 @@ export function VideoPlayer({
                       window.open(buildExternalPlayerUrl(url, 'mpv'), '_blank');
                     }}
                   >
-                    Öppna i MPV
+                    ▶️ Öppna i MPV
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -524,15 +544,22 @@ export function VideoPlayer({
                       window.open(buildExternalPlayerUrl(url, 'iina'), '_blank');
                     }}
                   >
-                    Öppna i IINA (macOS)
+                    🍎 Öppna i IINA (macOS)
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
                       const url = originalStreamUrl || extractOriginalUrl(src) || src;
                       navigator.clipboard.writeText(url);
+                      // Show feedback
+                      const btn = document.activeElement as HTMLElement;
+                      if (btn) {
+                        const original = btn.textContent;
+                        btn.textContent = '✓ Kopierad!';
+                        setTimeout(() => { btn.textContent = original; }, 1500);
+                      }
                     }}
                   >
-                    Kopiera URL
+                    📋 Kopiera stream-URL
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -543,7 +570,7 @@ export function VideoPlayer({
                 </Button>
               )}
             </div>
-          </Alert>
+          </div>
         </div>
       )}
 

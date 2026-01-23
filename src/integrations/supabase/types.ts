@@ -100,6 +100,7 @@ export type Database = {
           server_url: string | null
           source_type: string
           updated_at: string
+          use_proxy: boolean
           user_id: string
           username: string | null
         }
@@ -117,6 +118,7 @@ export type Database = {
           server_url?: string | null
           source_type?: string
           updated_at?: string
+          use_proxy?: boolean
           user_id: string
           username?: string | null
         }
@@ -134,6 +136,7 @@ export type Database = {
           server_url?: string | null
           source_type?: string
           updated_at?: string
+          use_proxy?: boolean
           user_id?: string
           username?: string | null
         }

@@ -794,40 +794,59 @@ export default function Sources() {
                   </div>
                 </dl>
                 
-                {/* Stream format toggles (only for Xtream sources) */}
-                {source.source_type === 'xtream' && (
-                  <div className="mt-4 space-y-3">
-                    <div className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="space-y-0.5">
-                        <div className="text-sm font-medium">Föredra TS för live</div>
-                        <div className="text-xs text-muted-foreground">
-                          Använd .ts istället för .m3u8 (kringgår blockering)
-                        </div>
+                {/* Stream format toggles */}
+                <div className="mt-4 space-y-3">
+                  {/* Proxy toggle - available for all sources */}
+                  <div className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">Använd proxy för streams</div>
+                      <div className="text-xs text-muted-foreground">
+                        Dirigerar streams via server (kan blockeras av vissa leverantörer)
                       </div>
-                      <Switch
-                        checked={source.prefer_ts_live}
-                        onCheckedChange={(checked) => {
-                          updateSource.mutate({ id: source.id, prefer_ts_live: checked });
-                        }}
-                      />
                     </div>
-                    
-                    <div className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="space-y-0.5">
-                        <div className="text-sm font-medium">Föredra TS för VOD</div>
-                        <div className="text-xs text-muted-foreground">
-                          Använd .ts för filmer/serier (kan hjälpa mot blockeringar)
-                        </div>
-                      </div>
-                      <Switch
-                        checked={source.prefer_ts_vod}
-                        onCheckedChange={(checked) => {
-                          updateSource.mutate({ id: source.id, prefer_ts_vod: checked });
-                        }}
-                      />
-                    </div>
+                    <Switch
+                      checked={source.use_proxy ?? true}
+                      onCheckedChange={(checked) => {
+                        updateSource.mutate({ id: source.id, use_proxy: checked });
+                      }}
+                    />
                   </div>
-                )}
+
+                  {/* Xtream-specific toggles */}
+                  {source.source_type === 'xtream' && (
+                    <>
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <div className="text-sm font-medium">Föredra TS för live</div>
+                          <div className="text-xs text-muted-foreground">
+                            Använd .ts istället för .m3u8 (kringgår blockering)
+                          </div>
+                        </div>
+                        <Switch
+                          checked={source.prefer_ts_live}
+                          onCheckedChange={(checked) => {
+                            updateSource.mutate({ id: source.id, prefer_ts_live: checked });
+                          }}
+                        />
+                      </div>
+                      
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
+                          <div className="text-sm font-medium">Föredra TS för VOD</div>
+                          <div className="text-xs text-muted-foreground">
+                            Använd .ts för filmer/serier (kan hjälpa mot blockeringar)
+                          </div>
+                        </div>
+                        <Switch
+                          checked={source.prefer_ts_vod}
+                          onCheckedChange={(checked) => {
+                            updateSource.mutate({ id: source.id, prefer_ts_vod: checked });
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}
