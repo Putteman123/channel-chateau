@@ -3,13 +3,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { toast } from 'sonner';
 
+export type SourceType = 'xtream' | 'm3u';
+
 export interface StreamSource {
   id: string;
   user_id: string;
   name: string;
-  server_url: string;
-  username: string;
-  password: string;
+  source_type: SourceType;
+  // Xtream fields (nullable for M3U sources)
+  server_url: string | null;
+  username: string | null;
+  password: string | null;
+  // M3U fields
+  m3u_url: string | null;
+  // Common fields
   is_active: boolean;
   prefer_ts_live: boolean;
   prefer_ts_vod: boolean;
@@ -17,6 +24,28 @@ export interface StreamSource {
   created_at: string;
   updated_at: string;
 }
+
+export interface AddXtreamSource {
+  name: string;
+  source_type: 'xtream';
+  server_url: string;
+  username: string;
+  password: string;
+  is_active?: boolean;
+  prefer_ts_live?: boolean;
+  prefer_ts_vod?: boolean;
+}
+
+export interface AddM3USource {
+  name: string;
+  source_type: 'm3u';
+  m3u_url: string;
+  is_active?: boolean;
+  prefer_ts_live?: boolean;
+  prefer_ts_vod?: boolean;
+}
+
+export type AddSourceInput = AddXtreamSource | AddM3USource;
 
 export function useStreamSources() {
   const { user } = useAuth();
@@ -40,20 +69,34 @@ export function useStreamSources() {
   });
 
   const addSource = useMutation({
-    mutationFn: async (source: Partial<Omit<StreamSource, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'last_synced_at'>> & { name: string; server_url: string; username: string; password: string }) => {
+    mutationFn: async (source: AddSourceInput) => {
       if (!user) throw new Error('Not authenticated');
+
+      // Build insert data based on source type
+      const baseData = {
+        user_id: user.id,
+        name: source.name,
+        source_type: source.source_type,
+        is_active: source.is_active ?? false,
+        prefer_ts_live: source.prefer_ts_live ?? true,
+        prefer_ts_vod: source.prefer_ts_vod ?? true,
+      };
+
+      const insertData = source.source_type === 'xtream'
+        ? {
+            ...baseData,
+            server_url: source.server_url,
+            username: source.username,
+            password: source.password,
+          }
+        : {
+            ...baseData,
+            m3u_url: source.m3u_url,
+          };
 
       const { data, error } = await supabase
         .from('stream_sources')
-        .insert({
-          user_id: user.id,
-          name: source.name,
-          server_url: source.server_url,
-          username: source.username,
-          password: source.password,
-          is_active: source.is_active ?? false,
-          prefer_ts_live: source.prefer_ts_live ?? true,
-        })
+        .insert(insertData)
         .select()
         .single();
       
@@ -62,10 +105,10 @@ export function useStreamSources() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stream-sources'] });
-      toast.success('Stream source added successfully');
+      toast.success('Streamkälla tillagd');
     },
     onError: (error) => {
-      toast.error('Failed to add stream source: ' + error.message);
+      toast.error('Kunde inte lägga till källa: ' + error.message);
     },
   });
 
@@ -86,10 +129,10 @@ export function useStreamSources() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stream-sources'] });
-      toast.success('Stream source updated');
+      toast.success('Streamkälla uppdaterad');
     },
     onError: (error) => {
-      toast.error('Failed to update stream source: ' + error.message);
+      toast.error('Kunde inte uppdatera källa: ' + error.message);
     },
   });
 
@@ -107,10 +150,10 @@ export function useStreamSources() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stream-sources'] });
-      toast.success('Stream source deleted');
+      toast.success('Streamkälla borttagen');
     },
     onError: (error) => {
-      toast.error('Failed to delete stream source: ' + error.message);
+      toast.error('Kunde inte ta bort källa: ' + error.message);
     },
   });
 

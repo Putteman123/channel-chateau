@@ -91,42 +91,48 @@ export type Database = {
           id: string
           is_active: boolean
           last_synced_at: string | null
+          m3u_url: string | null
           name: string
-          password: string
+          password: string | null
           prefer_ts_live: boolean
           prefer_ts_vod: boolean
-          server_url: string
+          server_url: string | null
+          source_type: string
           updated_at: string
           user_id: string
-          username: string
+          username: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           is_active?: boolean
           last_synced_at?: string | null
+          m3u_url?: string | null
           name?: string
-          password: string
+          password?: string | null
           prefer_ts_live?: boolean
           prefer_ts_vod?: boolean
-          server_url: string
+          server_url?: string | null
+          source_type?: string
           updated_at?: string
           user_id: string
-          username: string
+          username?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           is_active?: boolean
           last_synced_at?: string | null
+          m3u_url?: string | null
           name?: string
-          password?: string
+          password?: string | null
           prefer_ts_live?: boolean
           prefer_ts_vod?: boolean
-          server_url?: string
+          server_url?: string | null
+          source_type?: string
           updated_at?: string
           user_id?: string
-          username?: string
+          username?: string | null
         }
         Relationships: []
       }
