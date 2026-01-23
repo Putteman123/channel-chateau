@@ -70,6 +70,15 @@ export default function SeriesDetail() {
     });
   };
 
+  const getOriginalStreamUrl = (episodeId: string, extension: string) => {
+    if (!credentials) return '';
+    // Get the direct URL without proxy for external players
+    return XtreamAPI.buildSeriesStreamUrl(credentials, episodeId, { 
+      extension, 
+      useProxy: false 
+    });
+  };
+
   const handleProgress = (currentTime: number, duration: number) => {
     if (!activeSource || !selectedEpisode || !id) return;
     
@@ -284,9 +293,11 @@ export default function SeriesDetail() {
           {selectedEpisode && (
             <VideoPlayer
               src={getStreamUrl(selectedEpisode.id, selectedEpisode.extension)}
+              originalStreamUrl={getOriginalStreamUrl(selectedEpisode.id, selectedEpisode.extension)}
               title={`S${selectedEpisode.season}E${selectedEpisode.episode}: ${selectedEpisode.title}`}
               poster={info.cover}
               onProgress={handleProgress}
+              onClose={() => setSelectedEpisode(null)}
             />
           )}
         </DialogContent>

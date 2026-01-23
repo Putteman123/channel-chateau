@@ -79,10 +79,15 @@ export default function LiveTV() {
     }
   };
 
-  const getStreamUrl = (channel: XtreamAPI.XtreamChannel) => {
+  const getStreamUrl = useCallback((channel: XtreamAPI.XtreamChannel) => {
     if (!credentials) return '';
     return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { preferTs: preferTsLive });
-  };
+  }, [credentials, preferTsLive]);
+
+  const getOriginalStreamUrl = useCallback((channel: XtreamAPI.XtreamChannel) => {
+    if (!credentials) return '';
+    return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { useProxy: false });
+  }, [credentials]);
 
   const handlePlayChannel = (channel: XtreamAPI.XtreamChannel) => {
     setPlayingChannel(channel);
@@ -228,6 +233,7 @@ export default function LiveTV() {
         <div className="fixed inset-0 z-50 bg-black">
           <VideoPlayer
             src={getStreamUrl(playingChannel)}
+            originalStreamUrl={getOriginalStreamUrl(playingChannel)}
             title={playingChannel.name}
             poster={playingChannel.stream_icon}
             onClose={() => setPlayingChannel(null)}
@@ -239,8 +245,10 @@ export default function LiveTV() {
             {playingChannel && (
               <VideoPlayer
                 src={getStreamUrl(playingChannel)}
+                originalStreamUrl={getOriginalStreamUrl(playingChannel)}
                 title={playingChannel.name}
                 poster={playingChannel.stream_icon}
+                onClose={() => setPlayingChannel(null)}
               />
             )}
           </DialogContent>
