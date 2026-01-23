@@ -288,7 +288,15 @@ async function proxyApiCall<T>(
 
   if (error) {
     console.error('[XtreamAPI] Function invoke error:', error);
-    throw new Error(`API call failed: ${error.message}`);
+    // When edge function returns non-2xx, Supabase returns `error` and may still include JSON in `data`.
+    // Preserve upstream details so the UI can detect proxy blocks (502/ECONNREFUSED) and show proper guidance.
+    const extra =
+      data && typeof data === 'object'
+        ? JSON.stringify(data)
+        : typeof data === 'string'
+          ? data
+          : '';
+    throw new Error(extra ? `API call failed: ${error.message} | ${extra}` : `API call failed: ${error.message}`);
   }
 
   if (!data) {

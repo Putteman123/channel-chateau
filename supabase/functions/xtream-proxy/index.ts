@@ -18,11 +18,15 @@ function buildCandidateBaseUrls(serverUrl: string): string[] {
 
   // If the user provided a protocol, still try a sensible fallback:
   // - If they provided http://, prefer trying https:// first (many providers support https but users paste http)
-  // - If they provided https://, only try that.
+  // - If they provided https://, ALSO try http:// as fallback (some providers block 443 from datacenters)
   if (hadProtocol) {
     if (baseUrl.startsWith("http://")) {
       const httpsUrl = `https://${baseUrl.slice("http://".length)}`;
       return [httpsUrl, baseUrl];
+    }
+    if (baseUrl.startsWith("https://")) {
+      const httpUrl = `http://${baseUrl.slice("https://".length)}`;
+      return [baseUrl, httpUrl];
     }
     return [baseUrl];
   }

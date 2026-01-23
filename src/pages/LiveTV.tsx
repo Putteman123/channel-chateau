@@ -199,7 +199,7 @@ export default function LiveTV() {
       {isLoading ? (
         <ContentSkeleton type="channel" count={12} />
       ) : error ? (
-        <LoadError onRetry={() => refetch()} isRetrying={isRefetching} />
+        <LoadError onRetry={() => refetch()} isRetrying={isRefetching} error={error} />
       ) : viewMode === 'grid' ? (
         <VirtualizedGrid
           items={filteredChannels}
