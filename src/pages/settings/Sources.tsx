@@ -6,6 +6,7 @@ import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil } fr
 import { useStreamSources, StreamSource } from '@/hooks/useStreamSources';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -383,6 +384,22 @@ export default function Sources() {
                     <dd>{new Date(source.created_at).toLocaleDateString('sv-SE')}</dd>
                   </div>
                 </dl>
+                
+                {/* Prefer TS toggle */}
+                <div className="mt-4 flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-medium">Föredra TS för live</div>
+                    <div className="text-xs text-muted-foreground">
+                      Använd .ts istället för .m3u8 (kringgår blockering)
+                    </div>
+                  </div>
+                  <Switch
+                    checked={source.prefer_ts_live}
+                    onCheckedChange={(checked) => {
+                      updateSource.mutate({ id: source.id, prefer_ts_live: checked });
+                    }}
+                  />
+                </div>
               </CardContent>
             </Card>
           ))}

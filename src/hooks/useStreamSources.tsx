@@ -11,6 +11,7 @@ export interface StreamSource {
   username: string;
   password: string;
   is_active: boolean;
+  prefer_ts_live: boolean;
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;
@@ -38,14 +39,19 @@ export function useStreamSources() {
   });
 
   const addSource = useMutation({
-    mutationFn: async (source: Omit<StreamSource, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'last_synced_at'>) => {
+    mutationFn: async (source: Partial<Omit<StreamSource, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'last_synced_at'>> & { name: string; server_url: string; username: string; password: string }) => {
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('stream_sources')
         .insert({
           user_id: user.id,
-          ...source,
+          name: source.name,
+          server_url: source.server_url,
+          username: source.username,
+          password: source.password,
+          is_active: source.is_active ?? false,
+          prefer_ts_live: source.prefer_ts_live ?? true,
         })
         .select()
         .single();
