@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import Hls from 'hls.js';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, SkipBack, SkipForward, X } from 'lucide-react';
+import { useEffect, useRef, useCallback } from 'react';
+import videojs from 'video.js';
+import Player from 'video.js/dist/types/player';
+import 'video.js/dist/video-js.css';
+import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
-import { cn } from '@/lib/utils';
 
 export interface VideoPlayerProps {
   src: string;
@@ -26,93 +26,78 @@ export function VideoPlayer({
   startPosition = 0,
   autoPlay = true,
 }: VideoPlayerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<Hls | null>(null);
+  const videoRef = useRef<HTMLDivElement>(null);
+  const playerRef = useRef<Player | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [showControls, setShowControls] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
 
-  const hideControlsTimeout = useRef<NodeJS.Timeout | null>(null);
+  // Determine source type
+  const getSourceType = useCallback((url: string) => {
+    if (url.includes('.m3u8')) return 'application/x-mpegURL';
+    if (url.includes('.mp4')) return 'video/mp4';
+    if (url.includes('.webm')) return 'video/webm';
+    return 'application/x-mpegURL'; // Default to HLS
+  }, []);
 
-  // Initialize HLS
+  // Initialize player
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !src) return;
+    if (!videoRef.current || !src) return;
 
-    setIsLoading(true);
+    // Create video element if not exists
+    if (!playerRef.current) {
+      const videoElement = document.createElement('video-js');
+      videoElement.classList.add('vjs-big-play-centered', 'vjs-theme-city');
+      videoRef.current.appendChild(videoElement);
 
-    if (Hls.isSupported() && src.includes('.m3u8')) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
+      const player = videojs(videoElement, {
+        autoplay: autoPlay,
+        controls: true,
+        responsive: true,
+        fluid: true,
+        playsinline: true,
+        poster: poster,
+        sources: [{ src, type: getSourceType(src) }],
+        html5: {
+          vhs: {
+            overrideNative: true,
+            enableLowInitialPlaylist: true,
+          },
+        },
       });
-      
-      hlsRef.current = hls;
-      hls.loadSource(src);
-      hls.attachMedia(video);
-      
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setIsLoading(false);
+
+      playerRef.current = player;
+
+      // Set start position when ready
+      player.on('loadedmetadata', () => {
         if (startPosition > 0) {
-          video.currentTime = startPosition;
-        }
-        if (autoPlay) {
-          video.play().catch(() => {});
+          player.currentTime(startPosition);
         }
       });
 
-      hls.on(Hls.Events.ERROR, (event, data) => {
-        console.error('HLS Error:', data);
-        if (data.fatal) {
-          setIsLoading(false);
-        }
-      });
-
-      return () => {
-        hls.destroy();
-        hlsRef.current = null;
-      };
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
-      video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-        setIsLoading(false);
-        if (startPosition > 0) {
-          video.currentTime = startPosition;
-        }
-        if (autoPlay) {
-          video.play().catch(() => {});
-        }
+      // Handle ended event
+      player.on('ended', () => {
+        onEnded?.();
       });
     } else {
-      // Regular video
-      video.src = src;
-      video.addEventListener('loadedmetadata', () => {
-        setIsLoading(false);
-        if (startPosition > 0) {
-          video.currentTime = startPosition;
-        }
-        if (autoPlay) {
-          video.play().catch(() => {});
-        }
-      });
+      // Update source if it changes
+      const player = playerRef.current;
+      player.src({ src, type: getSourceType(src) });
+      if (poster) {
+        player.poster(poster);
+      }
     }
-  }, [src, startPosition, autoPlay]);
+  }, [src, poster, autoPlay, startPosition, getSourceType, onEnded]);
 
   // Progress tracking
   useEffect(() => {
-    if (onProgress && duration > 0) {
+    if (onProgress && playerRef.current) {
       progressIntervalRef.current = setInterval(() => {
-        if (videoRef.current) {
-          onProgress(videoRef.current.currentTime, duration);
+        const player = playerRef.current;
+        if (player) {
+          const currentTime = player.currentTime() || 0;
+          const duration = player.duration() || 0;
+          if (duration > 0) {
+            onProgress(currentTime, duration);
+          }
         }
       }, 5000); // Report every 5 seconds
     }
@@ -122,146 +107,26 @@ export function VideoPlayer({
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, [duration, onProgress]);
+  }, [onProgress]);
 
-  // Video event handlers
+  // Cleanup on unmount
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
-    const handleTimeUpdate = () => setCurrentTime(video.currentTime);
-    const handleDurationChange = () => setDuration(video.duration);
-    const handleEnded = () => {
-      setIsPlaying(false);
-      onEnded?.();
-    };
-
-    video.addEventListener('play', handlePlay);
-    video.addEventListener('pause', handlePause);
-    video.addEventListener('timeupdate', handleTimeUpdate);
-    video.addEventListener('durationchange', handleDurationChange);
-    video.addEventListener('ended', handleEnded);
-
     return () => {
-      video.removeEventListener('play', handlePlay);
-      video.removeEventListener('pause', handlePause);
-      video.removeEventListener('timeupdate', handleTimeUpdate);
-      video.removeEventListener('durationchange', handleDurationChange);
-      video.removeEventListener('ended', handleEnded);
+      if (playerRef.current) {
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
     };
-  }, [onEnded]);
-
-  // Fullscreen change detection
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  // Auto-hide controls
-  const resetControlsTimeout = useCallback(() => {
-    setShowControls(true);
-    if (hideControlsTimeout.current) {
-      clearTimeout(hideControlsTimeout.current);
-    }
-    hideControlsTimeout.current = setTimeout(() => {
-      if (isPlaying) {
-        setShowControls(false);
-      }
-    }, 3000);
-  }, [isPlaying]);
-
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-    }
-  };
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    if (containerRef.current) {
-      if (isFullscreen) {
-        document.exitFullscreen();
-      } else {
-        containerRef.current.requestFullscreen();
-      }
-    }
-  };
-
-  const handleVolumeChange = (value: number[]) => {
-    const vol = value[0];
-    setVolume(vol);
-    if (videoRef.current) {
-      videoRef.current.volume = vol;
-      setIsMuted(vol === 0);
-    }
-  };
-
-  const handleSeek = (value: number[]) => {
-    const time = value[0];
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-      setCurrentTime(time);
-    }
-  };
-
-  const skip = (seconds: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime += seconds;
-    }
-  };
-
-  const formatTime = (time: number) => {
-    const hours = Math.floor(time / 3600);
-    const minutes = Math.floor((time % 3600) / 60);
-    const secs = Math.floor(time % 60);
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
-
   return (
-    <div
-      ref={containerRef}
-      className="group relative aspect-video w-full overflow-hidden rounded-lg bg-black"
-      onMouseMove={resetControlsTimeout}
-      onMouseLeave={() => isPlaying && setShowControls(false)}
-    >
-      <video
-        ref={videoRef}
-        className="h-full w-full"
-        poster={poster}
-        playsInline
-        onClick={togglePlay}
-      />
-
-      {/* Loading spinner */}
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      )}
-
+    <div className="relative w-full">
       {/* Title overlay with close button */}
-      {showControls && (
-        <div className="absolute left-0 right-0 top-0 bg-gradient-to-b from-black/80 to-transparent p-4">
+      {(title || onClose) && (
+        <div className="absolute left-0 right-0 top-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4">
           <div className="flex items-center justify-between">
             {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
             {onClose && (
@@ -278,102 +143,13 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Controls overlay */}
-      <div
-        className={cn(
-          'absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4 transition-opacity duration-300',
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        )}
+      {/* Video.js container */}
+      <div 
+        data-vjs-player 
+        className="aspect-video w-full overflow-hidden rounded-xl shadow-2xl"
       >
-        {/* Progress bar */}
-        <div className="mb-4">
-          <Slider
-            value={[currentTime]}
-            max={duration || 100}
-            step={1}
-            onValueChange={handleSeek}
-            className="cursor-pointer"
-          />
-          <div className="mt-1 flex justify-between text-xs text-white/70">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        {/* Control buttons */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={togglePlay}
-              className="text-white hover:bg-white/20"
-            >
-              {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => skip(-10)}
-              className="text-white hover:bg-white/20"
-            >
-              <SkipBack className="h-5 w-5" />
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => skip(10)}
-              className="text-white hover:bg-white/20"
-            >
-              <SkipForward className="h-5 w-5" />
-            </Button>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleMute}
-                className="text-white hover:bg-white/20"
-              >
-                {isMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-              </Button>
-              <Slider
-                value={[isMuted ? 0 : volume]}
-                max={1}
-                step={0.1}
-                onValueChange={handleVolumeChange}
-                className="w-24"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleFullscreen}
-              className="text-white hover:bg-white/20"
-            >
-              {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-            </Button>
-          </div>
-        </div>
+        <div ref={videoRef} />
       </div>
-
-      {/* Center play button when paused */}
-      {!isPlaying && !isLoading && showControls && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Button
-            size="lg"
-            onClick={togglePlay}
-            className="h-16 w-16 rounded-full bg-primary/80 hover:bg-primary"
-          >
-            <Play className="h-8 w-8" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
