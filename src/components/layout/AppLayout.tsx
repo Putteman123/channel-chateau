@@ -5,6 +5,7 @@ import { AppSidebar } from './AppSidebar';
 import { StreamProvider, useStream } from '@/contexts/StreamContext';
 import { SpatialNavigationProvider, useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
 import { ExpiryWarningBanner } from '@/components/subscription/ExpiryWarningBanner';
+import { AnnouncementBanner } from '@/components/announcements/AnnouncementBanner';
 import { Tv } from 'lucide-react';
 
 function TvModeIndicator() {
@@ -49,6 +50,7 @@ function AppLayoutContent() {
             )}
           </header>
           <div className="p-6">
+            <AnnouncementBanner />
             <ExpiryWarningBanner sources={sources} />
             <div className="mt-4">
               <Outlet />

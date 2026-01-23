@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { AdminRoute } from "@/components/admin/AdminRoute";
+import { AdminLayout } from "@/components/admin/AdminLayout";
 
 // Pages
 import Index from "./pages/Index";
@@ -25,6 +27,12 @@ import Profile from "./pages/settings/Profile";
 import Sources from "./pages/settings/Sources";
 import Language from "./pages/settings/Language";
 import NotFound from "./pages/NotFound";
+
+// Admin Pages
+import AdminDashboard from "./pages/admin/Dashboard";
+import AdminUsers from "./pages/admin/Users";
+import AdminTickets from "./pages/admin/Tickets";
+import AdminAnnouncements from "./pages/admin/Announcements";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +71,22 @@ const App = () => (
                 <Route path="profile" element={<Profile />} />
                 <Route path="sources" element={<Sources />} />
                 <Route path="language" element={<Language />} />
+              </Route>
+            </Route>
+            
+            {/* Admin routes */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <AdminRoute />
+                </ProtectedRoute>
+              }
+            >
+              <Route element={<AdminLayout />}>
+                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/admin/users" element={<AdminUsers />} />
+                <Route path="/admin/tickets" element={<AdminTickets />} />
+                <Route path="/admin/announcements" element={<AdminAnnouncements />} />
               </Route>
             </Route>
             
