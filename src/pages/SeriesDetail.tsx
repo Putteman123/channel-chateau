@@ -5,6 +5,7 @@ import { Loader2, Play, Heart, Star, Calendar, Clock } from 'lucide-react';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
+import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -103,13 +104,25 @@ export default function SeriesDetail() {
   const seasonNumbers = Object.keys(episodes).sort((a, b) => parseInt(a) - parseInt(b));
   const isFav = id ? isFavorite(activeSource!.id, 'series', id) : false;
 
+  // Fetch TMDB metadata for enhanced backdrop and description
+  const { data: tmdbData } = useTMDBMetadata({
+    title: info.name,
+    type: 'tv',
+    enabled: !!info.name,
+  });
+
+  // Use TMDB data as fallback
+  const displayBackdrop = tmdbData?.backdrop || info.backdrop_path?.[0];
+  const displayPlot = info.plot || tmdbData?.description;
+  const displayRating = info.rating || (tmdbData?.rating ? String(tmdbData.rating) : undefined);
+
   return (
     <div className="space-y-8">
       {/* Hero Section */}
       <div className="relative -mx-6 -mt-6 h-[50vh] overflow-hidden">
-        {info.backdrop_path?.[0] && (
+        {displayBackdrop && (
           <img
-            src={info.backdrop_path[0]}
+            src={displayBackdrop}
             alt={info.name}
             className="h-full w-full object-cover"
           />
@@ -132,10 +145,10 @@ export default function SeriesDetail() {
               <h1 className="text-4xl font-bold">{info.name}</h1>
               
               <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                {info.rating && parseFloat(info.rating) > 0 && (
+                {displayRating && parseFloat(displayRating) > 0 && (
                   <span className="flex items-center gap-1">
                     <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                    {info.rating}
+                    {parseFloat(displayRating).toFixed(1)}
                   </span>
                 )}
                 {info.releaseDate && (
@@ -153,9 +166,11 @@ export default function SeriesDetail() {
                 {info.genre && <span>{info.genre}</span>}
               </div>
 
-              <p className="line-clamp-3 max-w-2xl text-muted-foreground">
-                {info.plot}
-              </p>
+              {displayPlot && (
+                <p className="line-clamp-3 max-w-2xl text-muted-foreground">
+                  {displayPlot}
+                </p>
+              )}
 
               <div className="flex gap-3">
                 <Button
