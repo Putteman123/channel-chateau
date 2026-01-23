@@ -261,6 +261,8 @@ export default function StreamingHub() {
   const hasError = moviesError || seriesError;
   const isRetrying = isRefetchingMovies || isRefetchingSeries;
 
+  const firstError = moviesError || seriesError;
+
   const handleRetry = () => {
     if (moviesError) refetchMovies();
     if (seriesError) refetchSeries();
@@ -322,7 +324,7 @@ export default function StreamingHub() {
           </div>
         ) : hasError ? (
           <div className="pt-6">
-            <LoadError onRetry={handleRetry} isRetrying={isRetrying} />
+            <LoadError onRetry={handleRetry} isRetrying={isRetrying} error={firstError} />
           </div>
         ) : (
           <>
