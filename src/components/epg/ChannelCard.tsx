@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { EPGInfo } from './EPGInfo';
 import { cn } from '@/lib/utils';
 import * as XtreamAPI from '@/lib/xtream-api';
+import { useFocusable } from '@/hooks/useFocusable';
 
 interface ChannelCardProps {
   channel: XtreamAPI.XtreamChannel;
@@ -19,8 +20,22 @@ export function ChannelCard({
   onPlay,
   onToggleFavorite,
 }: ChannelCardProps) {
+  // Spatial navigation support
+  const { ref, isFocused, isTvMode } = useFocusable<HTMLDivElement>({
+    group: 'channels',
+  });
+
   return (
-    <div className="group relative overflow-hidden rounded-lg bg-card transition-all hover:ring-2 hover:ring-primary">
+    <div 
+      ref={ref}
+      onClick={onPlay}
+      className={cn(
+        "group relative overflow-hidden rounded-lg bg-card transition-all cursor-pointer",
+        "hover:ring-2 hover:ring-primary",
+        isTvMode && "focusable",
+        isTvMode && isFocused && "is-focused"
+      )}
+    >
       {/* Channel header with logo */}
       <div className="relative aspect-video bg-muted">
         {channel.stream_icon ? (
@@ -48,7 +63,10 @@ export function ChannelCard({
         <Button
           variant="ghost"
           size="icon"
-          className="absolute right-2 top-2 bg-black/50 text-white opacity-0 transition-opacity hover:bg-black/70 group-hover:opacity-100"
+          className={cn(
+            "absolute right-2 top-2 bg-black/50 text-white transition-opacity hover:bg-black/70",
+            isFocused ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
           onClick={(e) => {
             e.stopPropagation();
             onToggleFavorite();
@@ -59,8 +77,10 @@ export function ChannelCard({
 
         {/* Play overlay */}
         <div
-          className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={onPlay}
+          className={cn(
+            "absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 transition-opacity",
+            isFocused ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}
         >
           <Button size="lg" className="h-14 w-14 rounded-full">
             <Play className="h-6 w-6" />

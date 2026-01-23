@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
+import { useFocusable } from '@/hooks/useFocusable';
 
 interface ContentCardProps {
   id: string;
@@ -17,6 +18,7 @@ interface ContentCardProps {
   onPlay?: () => void;
   onToggleFavorite?: () => void;
   enableTMDB?: boolean;
+  navGroup?: string;
 }
 
 export function ContentCard({
@@ -32,8 +34,14 @@ export function ContentCard({
   onPlay,
   onToggleFavorite,
   enableTMDB = true,
+  navGroup = 'content',
 }: ContentCardProps) {
   const navigate = useNavigate();
+  
+  // Spatial navigation support
+  const { ref, isFocused, isTvMode } = useFocusable<HTMLDivElement>({
+    group: navGroup,
+  });
 
   // Fetch TMDB metadata for movies and series
   const tmdbType = type === 'series' ? 'tv' : 'movie';
@@ -59,7 +67,17 @@ export function ContentCard({
   };
 
   return (
-    <div className="group relative card-hover">
+    <div 
+      ref={ref}
+      className={cn(
+        "group relative card-hover",
+        isTvMode && "focusable",
+        isTvMode && isFocused && "is-focused"
+      )}
+      onClick={handleClick}
+      role="button"
+      tabIndex={isTvMode ? -1 : 0}
+    >
       {/* Poster */}
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted">
         {displayPoster ? (
@@ -78,12 +96,18 @@ export function ContentCard({
           </div>
         )}
 
-        {/* Overlay on hover */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        {/* Overlay on hover or focus */}
+        <div className={cn(
+          "absolute inset-0 flex flex-col items-center justify-center bg-black/60 transition-opacity duration-300",
+          isFocused ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+        )}>
           <Button
             size="lg"
             className="mb-2 h-14 w-14 rounded-full"
-            onClick={handleClick}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleClick();
+            }}
           >
             <Play className="h-6 w-6" />
           </Button>

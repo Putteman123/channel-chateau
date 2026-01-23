@@ -1,9 +1,11 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import videojs from 'video.js';
 import Player from 'video.js/dist/types/player';
 import 'video.js/dist/video-js.css';
-import { X } from 'lucide-react';
+import { X, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
+import { cn } from '@/lib/utils';
 
 export interface VideoPlayerProps {
   src: string;
@@ -29,6 +31,14 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [showControls, setShowControls] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(autoPlay);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  
+  const { isTvMode } = useSpatialNavigation();
 
   // Determine source type
   const getSourceType = useCallback((url: string) => {
@@ -37,6 +47,71 @@ export function VideoPlayer({
     if (url.includes('.webm')) return 'video/webm';
     return 'application/x-mpegURL'; // Default to HLS
   }, []);
+
+  // Show controls temporarily
+  const showControlsTemporarily = useCallback(() => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) {
+        setShowControls(false);
+      }
+    }, 3000);
+  }, [isPlaying]);
+
+  // Handle TV mode keyboard events
+  useEffect(() => {
+    if (!isTvMode) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const player = playerRef.current;
+      if (!player) return;
+
+      switch (e.key) {
+        case 'ArrowUp':
+        case 'Enter':
+          e.preventDefault();
+          e.stopPropagation();
+          showControlsTemporarily();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          e.stopPropagation();
+          player.currentTime((player.currentTime() || 0) - 10);
+          showControlsTemporarily();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          e.stopPropagation();
+          player.currentTime((player.currentTime() || 0) + 10);
+          showControlsTemporarily();
+          break;
+        case ' ':
+          e.preventDefault();
+          e.stopPropagation();
+          if (player.paused()) {
+            player.play();
+            setIsPlaying(true);
+          } else {
+            player.pause();
+            setIsPlaying(false);
+          }
+          showControlsTemporarily();
+          break;
+        case 'Escape':
+        case 'Backspace':
+          e.preventDefault();
+          e.stopPropagation();
+          onClose?.();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isTvMode, onClose, showControlsTemporarily]);
 
   // Initialize player
   useEffect(() => {
@@ -50,7 +125,7 @@ export function VideoPlayer({
 
       const player = videojs(videoElement, {
         autoplay: autoPlay,
-        controls: true,
+        controls: !isTvMode, // Hide native controls in TV mode
         responsive: true,
         fluid: true,
         playsinline: true,
@@ -71,6 +146,16 @@ export function VideoPlayer({
         if (startPosition > 0) {
           player.currentTime(startPosition);
         }
+        setDuration(player.duration() || 0);
+      });
+
+      // Track play/pause state
+      player.on('play', () => setIsPlaying(true));
+      player.on('pause', () => setIsPlaying(false));
+
+      // Track time updates
+      player.on('timeupdate', () => {
+        setCurrentTime(player.currentTime() || 0);
       });
 
       // Handle ended event
@@ -85,7 +170,7 @@ export function VideoPlayer({
         player.poster(poster);
       }
     }
-  }, [src, poster, autoPlay, startPosition, getSourceType, onEnded]);
+  }, [src, poster, autoPlay, startPosition, getSourceType, onEnded, isTvMode]);
 
   // Progress tracking
   useEffect(() => {
@@ -93,10 +178,10 @@ export function VideoPlayer({
       progressIntervalRef.current = setInterval(() => {
         const player = playerRef.current;
         if (player) {
-          const currentTime = player.currentTime() || 0;
-          const duration = player.duration() || 0;
-          if (duration > 0) {
-            onProgress(currentTime, duration);
+          const time = player.currentTime() || 0;
+          const dur = player.duration() || 0;
+          if (dur > 0) {
+            onProgress(time, dur);
           }
         }
       }, 5000); // Report every 5 seconds
@@ -119,14 +204,57 @@ export function VideoPlayer({
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
       }
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
     };
   }, []);
 
+  // Player control functions
+  const togglePlay = () => {
+    const player = playerRef.current;
+    if (!player) return;
+    
+    if (player.paused()) {
+      player.play();
+    } else {
+      player.pause();
+    }
+    showControlsTemporarily();
+  };
+
+  const seekBackward = () => {
+    const player = playerRef.current;
+    if (!player) return;
+    player.currentTime((player.currentTime() || 0) - 10);
+    showControlsTemporarily();
+  };
+
+  const seekForward = () => {
+    const player = playerRef.current;
+    if (!player) return;
+    player.currentTime((player.currentTime() || 0) + 10);
+    showControlsTemporarily();
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   return (
-    <div className="relative w-full">
+    <div 
+      className="relative w-full"
+      onMouseMove={showControlsTemporarily}
+      onMouseEnter={() => setShowControls(true)}
+    >
       {/* Title overlay with close button */}
       {(title || onClose) && (
-        <div className="absolute left-0 right-0 top-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4">
+        <div className={cn(
+          "absolute left-0 right-0 top-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4 transition-opacity duration-300",
+          showControls ? "opacity-100" : "opacity-0"
+        )}>
           <div className="flex items-center justify-between">
             {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
             {onClose && (
@@ -147,9 +275,71 @@ export function VideoPlayer({
       <div 
         data-vjs-player 
         className="aspect-video w-full overflow-hidden rounded-xl shadow-2xl"
+        onClick={togglePlay}
       >
         <div ref={videoRef} />
       </div>
+
+      {/* Custom TV Mode Controls */}
+      {isTvMode && (
+        <div className={cn(
+          "absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-6 transition-opacity duration-300",
+          showControls ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}>
+          {/* Progress bar */}
+          <div className="mb-4">
+            <div className="flex items-center gap-2 text-xs text-white/80">
+              <span>{formatTime(currentTime)}</span>
+              <div className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-primary transition-all"
+                  style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                />
+              </div>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          {/* Control buttons */}
+          <div className="flex items-center justify-center gap-4">
+            <Button
+              variant="ghost"
+              size="lg"
+              onClick={seekBackward}
+              className="player-control focusable text-white hover:bg-white/20 h-14 w-14 rounded-full"
+            >
+              <SkipBack className="h-6 w-6" />
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="lg"
+              onClick={togglePlay}
+              className="player-control focusable text-white hover:bg-white/20 h-16 w-16 rounded-full bg-white/10"
+            >
+              {isPlaying ? (
+                <Pause className="h-8 w-8" />
+              ) : (
+                <Play className="h-8 w-8 ml-1" />
+              )}
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="lg"
+              onClick={seekForward}
+              className="player-control focusable text-white hover:bg-white/20 h-14 w-14 rounded-full"
+            >
+              <SkipForward className="h-6 w-6" />
+            </Button>
+          </div>
+
+          {/* TV mode hint */}
+          <div className="mt-4 text-center text-xs text-white/60">
+            ← → Spola • Mellanslag Pausa • Esc Stäng
+          </div>
+        </div>
+      )}
     </div>
   );
 }
