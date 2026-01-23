@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LayoutGrid, List } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Virtuoso } from 'react-virtuoso';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useOrientation } from '@/hooks/useOrientation';
@@ -11,6 +12,7 @@ import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
+import { VirtualizedGrid } from '@/components/content/VirtualizedGrid';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -142,65 +144,74 @@ export default function LiveTV() {
       ) : error ? (
         <LoadError onRetry={() => refetch()} isRetrying={isRefetching} />
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filteredChannels.map((channel) => (
+        <VirtualizedGrid
+          items={filteredChannels}
+          keyExtractor={(channel) => channel.stream_id}
+          emptyMessage="Inga kanaler hittades"
+          renderItem={(channel) => (
             <ChannelCard
-              key={channel.stream_id}
               channel={channel}
               credentials={credentials}
               isFavorite={isFavorite(activeSource!.id, 'channel', String(channel.stream_id))}
               onPlay={() => handlePlayChannel(channel)}
               onToggleFavorite={() => handleToggleFavorite(channel)}
             />
-          ))}
-        </div>
+          )}
+        />
       ) : (
-        <div className="space-y-2">
-          {filteredChannels.map((channel) => (
-            <div
-              key={channel.stream_id}
-              className="flex cursor-pointer items-center gap-4 rounded-lg bg-card p-3 transition-colors hover:bg-card/80"
-              onClick={() => setSelectedChannel(channel)}
-            >
-              {/* Channel logo */}
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-muted">
-                {channel.stream_icon ? (
-                  <img
-                    src={channel.stream_icon}
-                    alt={channel.name}
-                    className="h-full w-full object-contain p-1"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xl">
-                    📺
-                  </div>
-                )}
-              </div>
-
-              {/* Channel name */}
-              <div className="flex-1">
-                <h3 className="font-medium">{channel.name}</h3>
-              </div>
-
-              {/* Live badge */}
-              <span className="shrink-0 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
-                LIVE
-              </span>
-
-              {/* Play button */}
-              <Button
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePlayChannel(channel);
-                }}
+        <Virtuoso
+          useWindowScroll
+          totalCount={filteredChannels.length}
+          overscan={200}
+          itemContent={(index) => {
+            const channel = filteredChannels[index];
+            if (!channel) return null;
+            
+            return (
+              <div
+                className="mb-2 flex cursor-pointer items-center gap-4 rounded-lg bg-card p-3 transition-colors hover:bg-card/80"
+                onClick={() => setSelectedChannel(channel)}
               >
-                Titta
-              </Button>
-            </div>
-          ))}
-        </div>
+                {/* Channel logo */}
+                <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-muted">
+                  {channel.stream_icon ? (
+                    <img
+                      src={channel.stream_icon}
+                      alt={channel.name}
+                      className="h-full w-full object-contain p-1"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xl">
+                      📺
+                    </div>
+                  )}
+                </div>
+
+                {/* Channel name */}
+                <div className="flex-1">
+                  <h3 className="font-medium">{channel.name}</h3>
+                </div>
+
+                {/* Live badge */}
+                <span className="shrink-0 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
+                  LIVE
+                </span>
+
+                {/* Play button */}
+                <Button
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePlayChannel(channel);
+                  }}
+                >
+                  Titta
+                </Button>
+              </div>
+            );
+          }}
+        />
       )}
 
       {/* EPG Drawer for channel details */}
