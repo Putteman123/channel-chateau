@@ -47,7 +47,7 @@ interface Provider {
 
 export default function StreamingHub() {
   const { t } = useTranslation();
-  const { activeSource, credentials } = useStream();
+  const { activeSource, credentials, preferTsVod } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { updateHistory, getProgress } = useWatchHistory(activeSource?.id);
   const { isLandscapeMobile } = useOrientation();
@@ -222,7 +222,10 @@ export default function StreamingHub() {
 
   const getStreamUrl = (movie: XtreamAPI.XtreamMovie) => {
     if (!credentials) return '';
-    return XtreamAPI.buildMovieStreamUrl(credentials, movie.stream_id, movie.container_extension || 'mp4');
+    return XtreamAPI.buildMovieStreamUrl(credentials, movie.stream_id, { 
+      extension: movie.container_extension || 'mp4',
+      preferTs: preferTsVod 
+    });
   };
 
   const handleProgress = (currentTime: number, duration: number) => {

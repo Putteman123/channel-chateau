@@ -12,6 +12,7 @@ export interface StreamSource {
   password: string;
   is_active: boolean;
   prefer_ts_live: boolean;
+  prefer_ts_vod: boolean;
   last_synced_at: string | null;
   created_at: string;
   updated_at: string;

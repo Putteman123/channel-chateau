@@ -219,12 +219,23 @@ export function buildLiveStreamUrl(
 }
 
 // Build stream URL for movies
-export function buildMovieStreamUrl(creds: XtreamCredentials, streamId: number, extension: string = 'mp4', useProxy: boolean = true): string {
+export function buildMovieStreamUrl(
+  creds: XtreamCredentials, 
+  streamId: number, 
+  options: { extension?: string; useProxy?: boolean; preferTs?: boolean } = {}
+): string {
+  const { extension = 'mp4', useProxy = true, preferTs = false } = options;
   const base = buildBaseUrl(creds);
   const directUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
+  // For VOD, we can optionally use .ts format when proxying
   if (useProxy && shouldUseProxy(directUrl)) {
-    console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 50) + '...');
+    if (preferTs) {
+      const tsUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.ts`;
+      console.log('[XtreamAPI] Using stream proxy (ts) for movie:', tsUrl.substring(0, 50) + '...');
+      return proxyStreamUrl(tsUrl);
+    }
+    console.log('[XtreamAPI] Using stream proxy for movie:', directUrl.substring(0, 50) + '...');
     return proxyStreamUrl(directUrl);
   }
   
@@ -232,12 +243,23 @@ export function buildMovieStreamUrl(creds: XtreamCredentials, streamId: number, 
 }
 
 // Build stream URL for series episodes
-export function buildSeriesStreamUrl(creds: XtreamCredentials, episodeId: string, extension: string = 'mp4', useProxy: boolean = true): string {
+export function buildSeriesStreamUrl(
+  creds: XtreamCredentials, 
+  episodeId: string, 
+  options: { extension?: string; useProxy?: boolean; preferTs?: boolean } = {}
+): string {
+  const { extension = 'mp4', useProxy = true, preferTs = false } = options;
   const base = buildBaseUrl(creds);
   const directUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.${extension}`;
   
+  // For VOD, we can optionally use .ts format when proxying
   if (useProxy && shouldUseProxy(directUrl)) {
-    console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 50) + '...');
+    if (preferTs) {
+      const tsUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.ts`;
+      console.log('[XtreamAPI] Using stream proxy (ts) for series:', tsUrl.substring(0, 50) + '...');
+      return proxyStreamUrl(tsUrl);
+    }
+    console.log('[XtreamAPI] Using stream proxy for series:', directUrl.substring(0, 50) + '...');
     return proxyStreamUrl(directUrl);
   }
   
