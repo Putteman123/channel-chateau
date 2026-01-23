@@ -139,4 +139,88 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* ============================================
+     SPATIAL NAVIGATION - TV MODE STYLES
+     "The Chateau Glow" - Elegant gold focus state
+     ============================================ */
+  
+  /* Base focusable element */
+  .focusable {
+    @apply transition-all duration-200 ease-out;
+    outline: none;
+  }
+
+  /* The Chateau Glow - Active focus state */
+  .focusable.is-focused {
+    @apply scale-105 z-20 relative;
+    border: 2px solid hsl(45, 93%, 47%); /* Gold border */
+    box-shadow: 
+      0 0 20px 4px hsla(45, 93%, 47%, 0.4),
+      0 0 40px 8px hsla(45, 93%, 47%, 0.2),
+      0 8px 32px -4px hsla(0, 0%, 0%, 0.5);
+    border-radius: var(--radius);
+  }
+
+  /* Card-specific focus enhancement */
+  .focusable.is-focused.card-hover {
+    @apply scale-110;
+  }
+
+  /* Sidebar item focus */
+  .focusable.is-focused[data-nav-group="sidebar"] {
+    @apply scale-100;
+    background: hsl(var(--sidebar-accent));
+  }
+
+  /* Button focus in TV mode */
+  button.focusable.is-focused,
+  .focusable.is-focused button {
+    @apply ring-2 ring-offset-2;
+    --tw-ring-color: hsl(45, 93%, 47%);
+    --tw-ring-offset-color: hsl(var(--background));
+  }
+
+  /* Video player controls focus */
+  .player-control.focusable.is-focused {
+    @apply scale-110;
+    background: hsla(45, 93%, 47%, 0.3);
+  }
+
+  /* TV Mode indicator */
+  .tv-mode-indicator {
+    @apply fixed bottom-4 right-4 z-50 px-3 py-1.5 rounded-full text-xs font-medium;
+    background: hsla(45, 93%, 47%, 0.9);
+    color: hsl(0, 0%, 10%);
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Focus ring animation */
+  @keyframes focusPulse {
+    0%, 100% {
+      box-shadow: 
+        0 0 20px 4px hsla(45, 93%, 47%, 0.4),
+        0 0 40px 8px hsla(45, 93%, 47%, 0.2);
+    }
+    50% {
+      box-shadow: 
+        0 0 25px 6px hsla(45, 93%, 47%, 0.5),
+        0 0 50px 12px hsla(45, 93%, 47%, 0.25);
+    }
+  }
+
+  .focusable.is-focused {
+    animation: focusPulse 2s ease-in-out infinite;
+  }
 }

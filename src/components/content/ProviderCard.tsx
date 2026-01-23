@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { useFocusable } from '@/hooks/useFocusable';
 
 interface ProviderCardProps {
   name: string;
@@ -57,16 +58,24 @@ export function ProviderCard({
 }: ProviderCardProps) {
   const gradient = getProviderGradient(name);
   const initials = getInitials(name);
+  
+  // Spatial navigation support
+  const { ref, isFocused, isTvMode } = useFocusable<HTMLButtonElement>({
+    group: 'providers',
+  });
 
   return (
     <button
+      ref={ref}
       onClick={onClick}
       className={cn(
         'group relative flex flex-col items-center gap-2 rounded-xl p-4 transition-all duration-200',
         'hover:scale-105 hover:shadow-lg',
         isSelected
           ? 'ring-2 ring-primary ring-offset-2 ring-offset-background'
-          : 'hover:ring-1 hover:ring-muted-foreground/30'
+          : 'hover:ring-1 hover:ring-muted-foreground/30',
+        isTvMode && 'focusable',
+        isTvMode && isFocused && 'is-focused'
       )}
     >
       {/* Provider Icon/Logo */}
@@ -74,7 +83,7 @@ export function ProviderCard({
         className={cn(
           'flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br shadow-md transition-transform',
           gradient,
-          isSelected && 'scale-110'
+          (isSelected || isFocused) && 'scale-110'
         )}
       >
         {icon ? (
@@ -101,7 +110,7 @@ export function ProviderCard({
       {/* Provider Name */}
       <span className={cn(
         'text-xs font-medium transition-colors',
-        isSelected ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
+        isSelected || isFocused ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
       )}>
         {name}
       </span>
