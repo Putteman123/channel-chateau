@@ -14,6 +14,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { 
+  getProxyUrl, 
+  isProxiedUrl, 
+  extractOriginalUrl as extractOriginalFromProxy,
+  buildExternalPlayerUrl,
+  isTsStream,
+  hasMixedContentIssue,
+} from '@/lib/stream-utils';
+
 /** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
 export interface StreamHttpHeaders {
   userAgent?: string;
@@ -33,11 +42,13 @@ export interface VideoPlayerProps {
   originalStreamUrl?: string;
   /** Custom HTTP headers from M3U metadata */
   httpHeaders?: StreamHttpHeaders;
+  /** Force proxy usage even for HTTPS streams */
+  forceProxy?: boolean;
 }
 
 // Diagnostik för spelarfel
 interface PlayerError {
-  type: 'mixed-content' | 'cors' | 'network' | 'decode' | 'unknown';
+  type: 'mixed-content' | 'cors' | 'network' | 'decode' | 'ts-format' | 'unknown';
   message: string;
   details?: string;
   httpStatus?: number;
@@ -50,6 +61,7 @@ interface DiagnosticsInfo {
   isProxied: boolean;
   protocol: 'http' | 'https';
   pageProtocol: string;
+  isTsFormat: boolean;
   lastError?: string;
   lastHttpStatus?: number;
 }
@@ -108,32 +120,8 @@ function diagnoseError(src: string, errorCode?: number, errorMessage?: string): 
   };
 }
 
-// Helper function to get original stream URL from proxied URL
-function extractOriginalUrl(proxyUrl: string): string | null {
-  if (!proxyUrl.includes('/functions/v1/stream-proxy')) return null;
-  try {
-    const url = new URL(proxyUrl);
-    const originalUrl = url.searchParams.get('url');
-    return originalUrl ? decodeURIComponent(originalUrl) : null;
-  } catch {
-    return null;
-  }
-}
-
-// Build external player URLs
-function buildExternalPlayerUrl(streamUrl: string, player: 'vlc' | 'mpv' | 'iina'): string {
-  const encodedUrl = encodeURIComponent(streamUrl);
-  switch (player) {
-    case 'vlc':
-      return `vlc://${streamUrl}`;
-    case 'mpv':
-      return `mpv://${streamUrl}`;
-    case 'iina':
-      return `iina://weblink?url=${encodedUrl}`;
-    default:
-      return streamUrl;
-  }
-}
+// Re-export from stream-utils for backwards compatibility
+const extractOriginalUrl = extractOriginalFromProxy;
 
 export function VideoPlayer({
   src,
@@ -192,22 +180,21 @@ export function VideoPlayer({
         : effectiveSrc.includes('.mkv') ? 'MKV'
         : 'Okänd';
       
-      const isProxied = effectiveSrc.includes('/functions/v1/stream-proxy');
+      const isProxied = isProxiedUrl(effectiveSrc);
       const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
       const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
       
       // Extract original URL if proxied
       let displayUrl = effectiveSrc;
       if (isProxied) {
-        try {
-          const urlParam = new URL(effectiveSrc).searchParams.get('url');
-          if (urlParam) {
-            displayUrl = decodeURIComponent(urlParam);
-          }
-        } catch {
-          // Keep original
+        const extracted = extractOriginalUrl(effectiveSrc);
+        if (extracted) {
+          displayUrl = extracted;
         }
       }
+      
+      // Check if it's a TS format stream
+      const tsFormat = isTsStream(displayUrl);
       
       setDiagnostics({
         streamUrl: displayUrl,
@@ -215,17 +202,25 @@ export function VideoPlayer({
         isProxied,
         protocol,
         pageProtocol,
+        isTsFormat: tsFormat,
       });
       
-      console.log('[VideoPlayer] Stream URL:', effectiveSrc);
+      console.log('[VideoPlayer] Original URL:', displayUrl);
+      console.log('[VideoPlayer] Proxy URL:', effectiveSrc);
       console.log('[VideoPlayer] Protocol check - Page:', pageProtocol, 'Stream:', protocol);
+      console.log('[VideoPlayer] Is TS format:', tsFormat, 'Is Proxied:', isProxied);
       if (httpHeaders?.userAgent || httpHeaders?.referer) {
         console.log('[VideoPlayer] Custom HTTP headers:', httpHeaders);
       }
       
       // Pre-flight check for Mixed Content
-      if (protocol === 'http' && pageProtocol === 'https:') {
-        console.warn('[VideoPlayer] ⚠️ Mixed Content Warning: Attempting to load HTTP stream on HTTPS page');
+      if (hasMixedContentIssue(displayUrl) && !isProxied) {
+        console.warn('[VideoPlayer] ⚠️ Mixed Content Warning: Attempting to load HTTP stream on HTTPS page without proxy');
+      }
+      
+      // Warning for TS format
+      if (tsFormat && !isProxied) {
+        console.warn('[VideoPlayer] ⚠️ MPEG-TS format detected. Browser playback may not work - use external player');
       }
     }
   }, [effectiveSrc, httpHeaders]);
@@ -694,6 +689,12 @@ export function VideoPlayer({
                   <span className="font-mono">{diagnostics.urlType}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-white/50">TS-format:</span>
+                  <span className={diagnostics.isTsFormat ? "text-yellow-400" : "text-green-400"}>
+                    {diagnostics.isTsFormat ? "Ja ⚠️" : "Nej"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-white/50">Proxad:</span>
                   <span className={diagnostics.isProxied ? "text-green-400" : "text-yellow-400"}>
                     {diagnostics.isProxied ? "Ja ✓" : "Nej"}
@@ -712,6 +713,24 @@ export function VideoPlayer({
                   <span className="text-white/50">Sida:</span>
                   <span className="font-mono">{diagnostics.pageProtocol}</span>
                 </div>
+                {diagnostics.isTsFormat && (
+                  <div className="border-t border-yellow-500/30 pt-1.5 mt-1.5 bg-yellow-500/10 -mx-3 px-3 py-2 rounded">
+                    <span className="text-yellow-300 block mb-2">
+                      ⚠️ MPEG-TS-format kräver ofta extern spelare
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/20"
+                      onClick={() => {
+                        const url = originalStreamUrl || diagnostics.streamUrl;
+                        window.open(buildExternalPlayerUrl(url, 'vlc'), '_blank');
+                      }}
+                    >
+                      🎬 Öppna i VLC
+                    </Button>
+                  </div>
+                )}
                 {diagnostics.lastHttpStatus && (
                   <div className="flex justify-between border-t border-white/10 pt-1.5 mt-1.5">
                     <span className="text-white/50">HTTP-status:</span>
