@@ -180,18 +180,26 @@ export function ShakaPlayer({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [useNativePlayer, setUseNativePlayer] = useState(false);
+  const isMountedRef = useRef(true);
 
   const { isTvMode } = useSpatialNavigation();
 
-  // Determine if we should use native HTML5 video
-  useEffect(() => {
+  // Determine if we should use native HTML5 video - synkront med useMemo
+  const useNativePlayer = useMemo(() => {
     const shouldUseNative = shouldUseNativePlayer(src);
-    setUseNativePlayer(shouldUseNative);
     if (shouldUseNative) {
       console.log('[ShakaPlayer] Using native HTML5 video for MP4/MKV format');
     }
+    return shouldUseNative;
   }, [src]);
+
+  // Track component mount state
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Build effective source URL with headers
   const effectiveSrc = useMemo(() => {
@@ -262,7 +270,22 @@ export function ShakaPlayer({
 
   // Configure and initialize Shaka Player
   const initPlayer = useCallback(async () => {
-    if (!videoRef.current || !containerRef.current) return;
+    // Defensive checks - skip if using native player or refs not ready
+    if (useNativePlayer) {
+      console.log('[ShakaPlayer] Skipping Shaka init - using native player');
+      return;
+    }
+
+    if (!videoRef.current || !containerRef.current) {
+      console.warn('[ShakaPlayer] Refs not ready, skipping init');
+      return;
+    }
+
+    // Extra check for component unmount
+    if (!isMountedRef.current) {
+      console.warn('[ShakaPlayer] Component unmounted, skipping init');
+      return;
+    }
 
     // Install polyfills
     shaka.polyfill.installAll();
@@ -444,7 +467,7 @@ export function ShakaPlayer({
       );
       setPlayerError(diagnosis);
     }
-  }, [effectiveSrc, autoPlay, startPosition, httpHeaders]);
+  }, [effectiveSrc, autoPlay, startPosition, httpHeaders, useNativePlayer]);
 
   // Initialize Shaka player only for HLS streams (skip for native player)
   useEffect(() => {

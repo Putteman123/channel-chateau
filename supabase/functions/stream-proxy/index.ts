@@ -95,12 +95,32 @@ serve(async (req) => {
       fetchHeaders["Origin"] = streamOrigin;
     }
 
-    // Try HTTPS first, fall back to HTTP if connection refused
-    const urlsToTry = [decodedUrl];
+    // For live streams (.ts), prioritize HTTP first as many IPTV providers don't support HTTPS
+    // For other content, try HTTPS first then fall back to HTTP
+    const isLiveStream = decodedUrl.includes('/live/') || decodedUrl.endsWith('.ts');
+    const urlsToTry: string[] = [];
+    
     if (decodedUrl.startsWith("https://")) {
-      urlsToTry.push(decodedUrl.replace("https://", "http://"));
+      if (isLiveStream) {
+        // Live streams: Try HTTP first (many IPTV providers don't support HTTPS for live streams)
+        urlsToTry.push(decodedUrl.replace("https://", "http://"));
+        urlsToTry.push(decodedUrl);
+      } else {
+        // VOD: Try HTTPS first
+        urlsToTry.push(decodedUrl);
+        urlsToTry.push(decodedUrl.replace("https://", "http://"));
+      }
     } else if (decodedUrl.startsWith("http://")) {
-      urlsToTry.unshift(decodedUrl.replace("http://", "https://"));
+      if (isLiveStream) {
+        // Live streams: Stay with HTTP
+        urlsToTry.push(decodedUrl);
+      } else {
+        // VOD: Try HTTPS first
+        urlsToTry.push(decodedUrl.replace("http://", "https://"));
+        urlsToTry.push(decodedUrl);
+      }
+    } else {
+      urlsToTry.push(decodedUrl);
     }
 
     let response: Response | null = null;
@@ -133,16 +153,25 @@ serve(async (req) => {
     if (!response || !response.ok) {
       const isConnectionRefused = lastError?.message?.includes("Connection refused") || 
                                    lastError?.message?.includes("ECONNREFUSED");
+      const isHttp458 = lastError?.message?.includes("458");
       
       console.error(`[stream-proxy] All URLs failed. Last error: ${lastError?.message}`);
+      
+      let hint: string;
+      if (isHttp458) {
+        hint = "HTTP 458 innebär att leverantören aktivt blockerar denna IP-adress eller proxy. Prova att öppna strömmen i VLC eller en annan extern spelare.";
+      } else if (isConnectionRefused) {
+        hint = "Din IPTV-leverantör kan blockera datacenter-IP. Många leverantörer tillåter endast uppspelning från hem-IP. Prova en extern spelare som VLC.";
+      } else {
+        hint = "Strömmen är inte tillgänglig. Kontrollera att URL:en är korrekt och att din prenumeration är aktiv.";
+      }
       
       return new Response(
         JSON.stringify({ 
           error: "Upstream unreachable",
           details: lastError?.message || "Could not connect to stream",
-          hint: isConnectionRefused 
-            ? "Din IPTV-leverantör kan blockera datacenter-IP eller kräva HTTPS. Prova att skriva server-URL med https:// (om den stöds) eller testa från ett annat nätverk."
-            : "Strömmen är inte tillgänglig. Kontrollera att URL:en är korrekt.",
+          hint,
+          httpStatus: isHttp458 ? 458 : undefined,
         }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
