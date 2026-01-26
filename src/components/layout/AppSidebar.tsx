@@ -1,7 +1,8 @@
-import { Home, Tv, Film, PlayCircle, Heart, History, Settings, LogOut, Plus, Layers } from 'lucide-react';
+import { Home, Tv, Film, PlayCircle, Heart, History, Settings, LogOut, Plus, Layers, Shield } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
+import { useAdminCheck } from '@/hooks/useAdminCheck';
 import { useStream } from '@/contexts/StreamContext';
 import {
   Sidebar,
@@ -44,6 +45,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
   const { profile, signOut } = useAuth();
+  const { isAdmin } = useAdminCheck();
   const { sources, activeSource } = useStream();
   const collapsed = state === 'collapsed';
 
@@ -153,6 +155,20 @@ export function AppSidebar() {
 
       <SidebarFooter className="p-4">
         <SidebarMenu>
+          {isAdmin && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                asChild
+                isActive={location.pathname.startsWith('/admin')}
+                tooltip="Admin"
+              >
+                <NavLink to="/admin">
+                  <Shield className="h-4 w-4" />
+                  <span>Admin</span>
+                </NavLink>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
