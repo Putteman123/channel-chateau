@@ -26,6 +26,7 @@ import Settings from "./pages/Settings";
 import Profile from "./pages/settings/Profile";
 import Sources from "./pages/settings/Sources";
 import Language from "./pages/settings/Language";
+import Video from "./pages/settings/Video";
 import NotFound from "./pages/NotFound";
 
 // Admin Pages
@@ -71,6 +72,7 @@ const App = () => (
                 <Route path="profile" element={<Profile />} />
                 <Route path="sources" element={<Sources />} />
                 <Route path="language" element={<Language />} />
+                <Route path="video" element={<Video />} />
               </Route>
             </Route>
             
