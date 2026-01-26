@@ -94,6 +94,7 @@ export type Database = {
           id: string
           is_banned: boolean
           preferred_device: string | null
+          preferred_player: string
           updated_at: string
           user_id: string
         }
@@ -105,6 +106,7 @@ export type Database = {
           id?: string
           is_banned?: boolean
           preferred_device?: string | null
+          preferred_player?: string
           updated_at?: string
           user_id: string
         }
@@ -116,6 +118,7 @@ export type Database = {
           id?: string
           is_banned?: boolean
           preferred_device?: string | null
+          preferred_player?: string
           updated_at?: string
           user_id?: string
         }
