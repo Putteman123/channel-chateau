@@ -157,23 +157,34 @@ serve(async (req) => {
       
       console.error(`[stream-proxy] All URLs failed. Last error: ${lastError?.message}`);
       
+      // Determine the appropriate response status and hint
+      let responseStatus: number;
+      let errorType: string;
       let hint: string;
+      
       if (isHttp458) {
-        hint = "HTTP 458 innebär att leverantören aktivt blockerar denna IP-adress eller proxy. Prova att öppna strömmen i VLC eller en annan extern spelare.";
+        responseStatus = 458; // Return 458 directly so client can detect it
+        errorType = "Provider blocking";
+        hint = "HTTP 458 innebär att leverantören aktivt blockerar datacenter-IP. Öppna strömmen i VLC eller annan extern spelare för att använda din hem-IP.";
       } else if (isConnectionRefused) {
-        hint = "Din IPTV-leverantör kan blockera datacenter-IP. Många leverantörer tillåter endast uppspelning från hem-IP. Prova en extern spelare som VLC.";
+        responseStatus = 502;
+        errorType = "Connection refused";
+        hint = "Din IPTV-leverantör blockerar anslutningar från datacenter. Öppna strömmen i VLC eller annan extern spelare.";
       } else {
+        responseStatus = 502;
+        errorType = "Upstream unreachable";
         hint = "Strömmen är inte tillgänglig. Kontrollera att URL:en är korrekt och att din prenumeration är aktiv.";
       }
       
       return new Response(
         JSON.stringify({ 
-          error: "Upstream unreachable",
+          error: errorType,
           details: lastError?.message || "Could not connect to stream",
           hint,
-          httpStatus: isHttp458 ? 458 : undefined,
+          httpStatus: isHttp458 ? 458 : responseStatus,
+          isProviderBlocking: isHttp458 || isConnectionRefused,
         }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: responseStatus, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

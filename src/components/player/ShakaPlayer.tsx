@@ -64,17 +64,46 @@ interface DiagnosticsInfo {
   shakaVersion?: string;
 }
 
-function diagnoseError(src: string, errorCode?: number, errorCategory?: number, errorMessage?: string): PlayerError {
+function diagnoseError(
+  src: string, 
+  errorCode?: number, 
+  errorCategory?: number, 
+  errorMessage?: string,
+  httpStatus?: number
+): PlayerError {
   const isHttpSource = src.startsWith('http://');
   const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-  // Provider blocking
-  if (errorMessage?.includes('458') || errorMessage?.includes('blocked')) {
+  // HTTP 458 - Provider actively blocking proxy/datacenter IPs
+  if (httpStatus === 458 || errorMessage?.includes('458')) {
     return {
       type: 'network',
-      message: 'Leverantören blockerar uppspelning',
-      details: 'Din IPTV-leverantör tillåter eventuellt inte uppspelning via proxy.',
+      message: 'Leverantören blockerar proxy-uppspelning',
+      details: 'Din IPTV-leverantör tillåter inte uppspelning via vår proxy (datacenter-IP). Öppna strömmen i VLC eller annan extern spelare för att spela via din egen IP.',
       code: errorCode,
+      httpStatus: 458,
+    };
+  }
+
+  // HTTP 502 - Upstream unreachable (often also blocking)
+  if (httpStatus === 502 || errorMessage?.includes('502') || errorMessage?.includes('Upstream unreachable')) {
+    return {
+      type: 'network',
+      message: 'Kunde inte ansluta till strömkällan',
+      details: 'Proxy-servern kunde inte nå IPTV-leverantören. Detta kan bero på blockering eller att servern är nere. Prova öppna i VLC.',
+      code: errorCode,
+      httpStatus: 502,
+    };
+  }
+
+  // Connection refused
+  if (errorMessage?.includes('ECONNREFUSED') || errorMessage?.includes('Connection refused')) {
+    return {
+      type: 'network',
+      message: 'Anslutning nekad av leverantören',
+      details: 'IPTV-leverantören nekar anslutningar från datacenter. Öppna strömmen i VLC eller annan extern spelare.',
+      code: errorCode,
+      httpStatus: 502,
     };
   }
 
@@ -83,7 +112,7 @@ function diagnoseError(src: string, errorCode?: number, errorCategory?: number, 
     return {
       type: 'mixed-content',
       message: 'Strömmen blockeras av Mixed Content-skydd',
-      details: 'HTTPS-sidan kan inte ladda HTTP-strömmar. Använd stream-proxyn eller öppna i extern spelare.',
+      details: 'HTTPS-sidan kan inte ladda HTTP-strömmar direkt. Strömmen måste gå via proxy eller öppnas i extern spelare.',
       code: errorCode,
     };
   }
@@ -91,6 +120,18 @@ function diagnoseError(src: string, errorCode?: number, errorCategory?: number, 
   // Shaka error categories
   // Category 1: Network errors
   if (errorCategory === 1) {
+    // Check for fetch failures (often Mixed Content or CORS)
+    if (errorMessage?.includes('Failed to fetch')) {
+      if (isHttpSource && isHttpsPage) {
+        return {
+          type: 'mixed-content',
+          message: 'Strömmen blockeras av webbläsarens säkerhetsskydd',
+          details: 'Webbläsaren blockerar HTTP-strömmar på HTTPS-sidor (Mixed Content). Öppna i VLC eller använd proxy.',
+          code: errorCode,
+        };
+      }
+    }
+    
     return {
       type: 'network',
       message: 'Nätverksfel vid laddning av ström',
@@ -99,13 +140,12 @@ function diagnoseError(src: string, errorCode?: number, errorCategory?: number, 
     };
   }
 
-  // Category 2: Text errors
   // Category 3: Media errors
   if (errorCategory === 3) {
     return {
       type: 'decode',
       message: 'Kunde inte avkoda strömmen',
-      details: errorMessage || 'Formatet stöds inte av webbläsaren.',
+      details: errorMessage || 'Formatet stöds inte av webbläsaren. Prova öppna i VLC.',
       code: errorCode,
     };
   }
@@ -126,7 +166,7 @@ function diagnoseError(src: string, errorCode?: number, errorCategory?: number, 
     return {
       type: 'network',
       message: 'HTTP-fel vid hämtning av ström',
-      details: errorMessage || 'Servern returnerade ett fel. Strömmen kan vara otillgänglig.',
+      details: errorMessage || 'Servern returnerade ett fel. Strömmen kan vara otillgänglig. Prova öppna i VLC.',
       code: errorCode,
     };
   }
@@ -134,7 +174,7 @@ function diagnoseError(src: string, errorCode?: number, errorCategory?: number, 
   return {
     type: 'unknown',
     message: 'Ett okänt fel uppstod',
-    details: errorMessage || `Felkod: ${errorCode || 'Okänd'}`,
+    details: errorMessage || `Felkod: ${errorCode || 'Okänd'}. Prova öppna i VLC.`,
     code: errorCode,
   };
 }
@@ -415,13 +455,14 @@ export function ShakaPlayer({
         effectiveSrc,
         error.code,
         error.category,
-        error.message
+        error.message,
+        error.data?.[1] // HTTP status if available
       );
       setPlayerError(diagnosis);
       setDiagnostics(prev => prev ? {
         ...prev,
         lastError: error.message,
-        lastHttpStatus: error.data?.[1],
+        lastHttpStatus: error.data?.[1] || diagnosis.httpStatus,
       } : null);
     });
 
@@ -463,7 +504,8 @@ export function ShakaPlayer({
         effectiveSrc,
         loadError.code,
         loadError.category,
-        loadError.message
+        loadError.message,
+        loadError.data?.[1]
       );
       setPlayerError(diagnosis);
     }
@@ -643,7 +685,15 @@ export function ShakaPlayer({
       {playerError && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/90 p-4 overflow-auto">
           <div className="max-w-lg w-full space-y-4">
-            <Alert variant="destructive" className="bg-destructive/20 border-destructive">
+            <Alert 
+              variant="destructive" 
+              className={cn(
+                "border",
+                playerError.httpStatus === 458 
+                  ? "bg-yellow-500/20 border-yellow-500/50" 
+                  : "bg-destructive/20 border-destructive"
+              )}
+            >
               <AlertTriangle className="h-5 w-5" />
               <AlertTitle className="text-lg">{playerError.message}</AlertTitle>
               <AlertDescription className="mt-2 text-sm opacity-90">
@@ -651,38 +701,78 @@ export function ShakaPlayer({
                 {playerError.code && (
                   <span className="block mt-1 text-xs opacity-70">
                     Felkod: {playerError.code}
+                    {playerError.httpStatus && ` (HTTP ${playerError.httpStatus})`}
                   </span>
                 )}
               </AlertDescription>
             </Alert>
+
+            {/* Prominent VLC button for provider blocking (458) */}
+            {(playerError.httpStatus === 458 || playerError.httpStatus === 502) && (
+              <div className="p-4 rounded-lg bg-primary/10 border border-primary/30 space-y-3">
+                <p className="text-sm font-medium text-primary">
+                  ✓ Rekommenderad lösning:
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Öppna strömmen i en extern spelare som körs på din dator. 
+                  Detta använder din hem-IP istället för våra servrar.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button 
+                    onClick={() => handleOpenExternal('vlc')}
+                    className="flex-1 min-w-[120px]"
+                  >
+                    Öppna i VLC
+                  </Button>
+                  <Button 
+                    onClick={() => handleOpenExternal('mpv')}
+                    variant="secondary"
+                    className="flex-1 min-w-[120px]"
+                  >
+                    Öppna i MPV
+                  </Button>
+                </div>
+                <Button 
+                  onClick={() => handleOpenExternal('copy')}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                >
+                  Kopiera direktlänk till urklipp
+                </Button>
+              </div>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleRetry} variant="secondary">
                 Försök igen
               </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Öppna externt
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => handleOpenExternal('vlc')}>
-                    Öppna i VLC
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleOpenExternal('mpv')}>
-                    Öppna i MPV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleOpenExternal('iina')}>
-                    Öppna i IINA (macOS)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleOpenExternal('copy')}>
-                    Kopiera URL
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Only show dropdown if not already showing prominent buttons */}
+              {playerError.httpStatus !== 458 && playerError.httpStatus !== 502 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Öppna externt
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => handleOpenExternal('vlc')}>
+                      Öppna i VLC
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleOpenExternal('mpv')}>
+                      Öppna i MPV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleOpenExternal('iina')}>
+                      Öppna i IINA (macOS)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleOpenExternal('copy')}>
+                      Kopiera URL
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
 
               {onClose && (
                 <Button variant="ghost" onClick={onClose}>
