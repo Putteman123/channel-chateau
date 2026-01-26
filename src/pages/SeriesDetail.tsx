@@ -6,7 +6,7 @@ import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { ShakaPlayer } from '@/components/player/ShakaPlayer';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -292,7 +292,7 @@ export default function SeriesDetail() {
       <Dialog open={!!selectedEpisode} onOpenChange={() => setSelectedEpisode(null)}>
         <DialogContent className="max-w-4xl p-0">
           {selectedEpisode && (
-            <VideoPlayer
+            <ShakaPlayer
               src={getStreamUrl(selectedEpisode.id, selectedEpisode.extension)}
               originalStreamUrl={getOriginalStreamUrl(selectedEpisode.id, selectedEpisode.extension)}
               title={`S${selectedEpisode.season}E${selectedEpisode.episode}: ${selectedEpisode.title}`}

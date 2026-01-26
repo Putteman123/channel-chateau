@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { ShakaPlayer } from '@/components/player/ShakaPlayer';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import * as XtreamAPI from '@/lib/xtream-api';
@@ -137,7 +137,7 @@ export default function MoviePlayer() {
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       {/* Video Player */}
       <div className="flex-1">
-        <VideoPlayer
+        <ShakaPlayer
           src={getStreamUrl()}
           originalStreamUrl={getOriginalStreamUrl()}
           title={displayTitle}

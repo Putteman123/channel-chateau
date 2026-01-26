@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { ShakaPlayer } from '@/components/player/ShakaPlayer';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import * as XtreamAPI from '@/lib/xtream-api';
@@ -101,7 +101,7 @@ export default function ChannelPlayer() {
 
   return (
     <div className="fixed inset-0 z-50 bg-black">
-      <VideoPlayer
+      <ShakaPlayer
         src={getStreamUrl()}
         originalStreamUrl={getOriginalStreamUrl()}
         title={channel.name}
