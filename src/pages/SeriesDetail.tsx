@@ -8,9 +8,10 @@ import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
 import { ShakaPlayer } from '@/components/player/ShakaPlayer';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { cn } from '@/lib/utils';
 import * as XtreamAPI from '@/lib/xtream-api';
 
@@ -290,7 +291,12 @@ export default function SeriesDetail() {
 
       {/* Video Player Dialog */}
       <Dialog open={!!selectedEpisode} onOpenChange={() => setSelectedEpisode(null)}>
-        <DialogContent className="max-w-4xl p-0">
+        <DialogContent className="max-w-4xl p-0" aria-describedby={undefined}>
+          <VisuallyHidden>
+            <DialogTitle>
+              {selectedEpisode ? `S${selectedEpisode.season}E${selectedEpisode.episode}: ${selectedEpisode.title}` : 'Video Player'}
+            </DialogTitle>
+          </VisuallyHidden>
           {selectedEpisode && (
             <ShakaPlayer
               src={getStreamUrl(selectedEpisode.id, selectedEpisode.extension)}

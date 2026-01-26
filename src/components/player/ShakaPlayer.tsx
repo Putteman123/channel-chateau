@@ -139,6 +139,21 @@ function diagnoseError(src: string, errorCode?: number, errorCategory?: number, 
   };
 }
 
+/**
+ * Check if URL should use native HTML5 video instead of Shaka
+ * MP4/MKV files often contain codecs (like HEVC) that Shaka/MSE can't decode
+ * but native browser video can handle via hardware acceleration
+ */
+function shouldUseNativePlayer(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return pathname.endsWith('.mp4') || pathname.endsWith('.mkv');
+  } catch {
+    const lowerUrl = url.toLowerCase();
+    return lowerUrl.includes('.mp4') || lowerUrl.includes('.mkv');
+  }
+}
+
 export function ShakaPlayer({
   src,
   poster,
@@ -152,6 +167,7 @@ export function ShakaPlayer({
   httpHeaders,
 }: ShakaPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const nativeVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<shaka.Player | null>(null);
   const uiRef = useRef<shaka.ui.Overlay | null>(null);
@@ -164,8 +180,18 @@ export function ShakaPlayer({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [useNativePlayer, setUseNativePlayer] = useState(false);
 
   const { isTvMode } = useSpatialNavigation();
+
+  // Determine if we should use native HTML5 video
+  useEffect(() => {
+    const shouldUseNative = shouldUseNativePlayer(src);
+    setUseNativePlayer(shouldUseNative);
+    if (shouldUseNative) {
+      console.log('[ShakaPlayer] Using native HTML5 video for MP4/MKV format');
+    }
+  }, [src]);
 
   // Build effective source URL with headers
   const effectiveSrc = useMemo(() => {
@@ -420,8 +446,13 @@ export function ShakaPlayer({
     }
   }, [effectiveSrc, autoPlay, startPosition, httpHeaders]);
 
-  // Initialize player on mount
+  // Initialize Shaka player only for HLS streams (skip for native player)
   useEffect(() => {
+    if (useNativePlayer) {
+      setIsLoading(false);
+      return;
+    }
+
     initPlayer();
 
     return () => {
@@ -434,24 +465,24 @@ export function ShakaPlayer({
         uiRef.current = null;
       }
     };
-  }, [initPlayer]);
+  }, [initPlayer, useNativePlayer]);
 
-  // Handle video ended event
+  // Handle video ended event - works for both native and Shaka player
   useEffect(() => {
-    const video = videoRef.current;
+    const video = useNativePlayer ? nativeVideoRef.current : videoRef.current;
     if (!video) return;
 
     const handleEnded = () => onEnded?.();
     video.addEventListener('ended', handleEnded);
 
     return () => video.removeEventListener('ended', handleEnded);
-  }, [onEnded]);
+  }, [onEnded, useNativePlayer]);
 
-  // Progress tracking
+  // Progress tracking - works for both native and Shaka player
   useEffect(() => {
-    if (onProgress && videoRef.current) {
+    const video = useNativePlayer ? nativeVideoRef.current : videoRef.current;
+    if (onProgress && video) {
       progressIntervalRef.current = setInterval(() => {
-        const video = videoRef.current;
         if (video && video.duration > 0) {
           onProgress(video.currentTime, video.duration);
         }
@@ -463,14 +494,14 @@ export function ShakaPlayer({
         clearInterval(progressIntervalRef.current);
       }
     };
-  }, [onProgress]);
+  }, [onProgress, useNativePlayer]);
 
-  // TV mode keyboard handling
+  // TV mode keyboard handling - works for both native and Shaka player
   useEffect(() => {
     if (!isTvMode) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const video = videoRef.current;
+      const video = useNativePlayer ? nativeVideoRef.current : videoRef.current;
       if (!video) return;
 
       switch (e.key) {
@@ -500,12 +531,22 @@ export function ShakaPlayer({
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isTvMode, onClose]);
+  }, [isTvMode, onClose, useNativePlayer]);
 
   const handleRetry = async () => {
     setPlayerError(null);
     retryCountRef.current = 0;
-    if (playerRef.current) {
+
+    if (useNativePlayer && nativeVideoRef.current) {
+      // Retry native player
+      nativeVideoRef.current.load();
+      if (startPosition > 0) {
+        nativeVideoRef.current.currentTime = startPosition;
+      }
+      if (autoPlay) {
+        nativeVideoRef.current.play();
+      }
+    } else if (playerRef.current) {
       try {
         await playerRef.current.load(effectiveSrc);
         if (startPosition > 0 && videoRef.current) {
@@ -517,6 +558,28 @@ export function ShakaPlayer({
       } catch (error) {
         console.error('[ShakaPlayer] Retry load error:', error);
       }
+    }
+  };
+
+  // Handle native video error - fallback to external player
+  const handleNativeVideoError = () => {
+    console.error('[ShakaPlayer] Native video error - codec may not be supported');
+    setPlayerError({
+      type: 'decode',
+      message: 'Filformatet stöds ej av webbläsaren',
+      details: 'Videon kan innehålla codecs (t.ex. HEVC/H.265) som din webbläsare inte kan spela upp. Öppna i en extern spelare som VLC.',
+    });
+    setDiagnostics(prev => prev ? {
+      ...prev,
+      lastError: 'Native video playback failed - unsupported codec',
+    } : null);
+  };
+
+  // Handle native video loaded - set start position
+  const handleNativeVideoLoaded = () => {
+    setIsLoading(false);
+    if (startPosition > 0 && nativeVideoRef.current) {
+      nativeVideoRef.current.currentTime = startPosition;
     }
   };
 
@@ -638,21 +701,42 @@ export function ShakaPlayer({
         </div>
       )}
 
-      {/* Shaka Player Container */}
-      <div
-        ref={containerRef}
-        className="shaka-video-container h-full w-full"
-        data-shaka-player-container
-        onMouseMove={() => setShowControls(true)}
-      >
-        <video
-          ref={videoRef}
-          className="h-full w-full"
-          poster={poster}
-          playsInline
-          data-shaka-player
-        />
-      </div>
+      {/* Native HTML5 Video Player for MP4/MKV */}
+      {useNativePlayer && (
+        <div className="h-full w-full" onMouseMove={() => setShowControls(true)}>
+          <video
+            ref={nativeVideoRef}
+            src={effectiveSrc}
+            className="h-full w-full"
+            poster={poster}
+            controls
+            playsInline
+            autoPlay={autoPlay}
+            crossOrigin="anonymous"
+            onError={handleNativeVideoError}
+            onLoadedData={handleNativeVideoLoaded}
+            onLoadStart={() => setIsLoading(true)}
+          />
+        </div>
+      )}
+
+      {/* Shaka Player Container for HLS/other streams */}
+      {!useNativePlayer && (
+        <div
+          ref={containerRef}
+          className="shaka-video-container h-full w-full"
+          data-shaka-player-container
+          onMouseMove={() => setShowControls(true)}
+        >
+          <video
+            ref={videoRef}
+            className="h-full w-full"
+            poster={poster}
+            playsInline
+            data-shaka-player
+          />
+        </div>
+      )}
 
       {/* Loading indicator */}
       {isLoading && !playerError && (
