@@ -103,7 +103,6 @@ serve(async (req) => {
               method: "GET",
               headers: {
                 "Accept": "application/json",
-                // Some IPTV providers block requests without a UA.
                 "User-Agent": "Lovable-StreamProxy/1.0 (+https://lovable.dev)",
                 "Connection": "close",
               },
@@ -111,15 +110,27 @@ serve(async (req) => {
             timeoutMs,
           );
           lastNetworkError = null;
+          
+          // Retry on 5xx server errors (often transient)
+          if (response.status >= 500 && response.status < 600 && attempt < 2) {
+            console.warn(`Upstream returned ${response.status}, retrying (attempt ${attempt}/2)...`);
+            response = null;
+            continue;
+          }
+          
           break;
         } catch (err) {
           lastNetworkError = err;
           console.error(`Upstream fetch error (attempt ${attempt}/2) for ${safeLogUrl(apiUrl, password)}:`, err);
-          // Retry once for transient errors, then fall back to next baseUrl candidate.
         }
       }
 
-      if (response) break;
+      if (response && response.ok) break;
+      // If we got a non-ok response, try next candidate
+      if (response && !response.ok && candidates.indexOf(baseUrl) < candidates.length - 1) {
+        console.log(`Response ${response.status}, trying next candidate...`);
+        response = null;
+      }
     }
 
     if (!response) {
