@@ -817,6 +817,21 @@ export default function Sources() {
                     <>
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="space-y-0.5">
+                          <div className="text-sm font-medium">Tvinga HTTP för live</div>
+                          <div className="text-xs text-muted-foreground">
+                            Konvertera HTTPS till HTTP för live-strömmar (löser ECONNREFUSED)
+                          </div>
+                        </div>
+                        <Switch
+                          checked={source.force_http_live ?? false}
+                          onCheckedChange={(checked) => {
+                            updateSource.mutate({ id: source.id, force_http_live: checked });
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="space-y-0.5">
                           <div className="text-sm font-medium">Föredra TS för live</div>
                           <div className="text-xs text-muted-foreground">
                             Använd .ts istället för .m3u8 (kringgår blockering)

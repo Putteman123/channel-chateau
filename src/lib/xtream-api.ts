@@ -196,10 +196,17 @@ function proxyStreamUrl(url: string): string {
 export function buildLiveStreamUrl(
   creds: XtreamCredentials, 
   streamId: number, 
-  options: { useProxy?: boolean; preferTs?: boolean } = {}
+  options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean } = {}
 ): string {
-  const { useProxy = true, preferTs = true } = options;
-  const base = buildBaseUrl(creds);
+  const { useProxy = true, preferTs = true, forceHttp = false } = options;
+  let base = buildBaseUrl(creds);
+  
+  // Force HTTP protocol if requested (many IPTV providers don't support HTTPS for live)
+  if (forceHttp && base.startsWith('https://')) {
+    base = base.replace('https://', 'http://');
+    console.log('[XtreamAPI] Forced HTTP for live stream:', base.substring(0, 40) + '...');
+  }
+  
   const directM3u8Url = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.m3u8`;
   const directTsUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.ts`;
   

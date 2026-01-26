@@ -13,7 +13,7 @@ export default function ChannelPlayer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { activeSource, credentials, preferTsLive, useProxy } = useStream();
+  const { activeSource, credentials, preferTsLive, useProxy, forceHttpLive } = useStream();
   const { updateHistory } = useWatchHistory(activeSource?.id);
 
   // Fetch channel info
@@ -33,7 +33,8 @@ export default function ChannelPlayer() {
     if (!credentials || !id) return '';
     return XtreamAPI.buildLiveStreamUrl(credentials, parseInt(id), { 
       preferTs: preferTsLive,
-      useProxy 
+      useProxy,
+      forceHttp: forceHttpLive,
     });
   };
 
