@@ -26,7 +26,7 @@ type UnifiedChannel = XtreamAPI.XtreamChannel | M3UChannel;
 
 export default function LiveTV() {
   const { t } = useTranslation();
-  const { activeSource, sourceType, credentials, m3uUrl, preferTsLive } = useStream();
+  const { activeSource, sourceType, credentials, m3uUrl, preferTsLive, forceHttpLive, useProxy } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { isLandscapeMobile } = useOrientation();
   
@@ -125,8 +125,12 @@ export default function LiveTV() {
     }
     // For Xtream channels
     if (!credentials) return '';
-    return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { preferTs: preferTsLive });
-  }, [credentials, preferTsLive]);
+    return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { 
+      preferTs: preferTsLive,
+      useProxy,
+      forceHttp: forceHttpLive,
+    });
+  }, [credentials, preferTsLive, forceHttpLive, useProxy]);
 
   // Extract HTTP headers from M3U channel for VideoPlayer
   const getHttpHeaders = useCallback((channel: UnifiedChannel) => {

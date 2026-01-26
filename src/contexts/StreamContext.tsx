@@ -14,6 +14,7 @@ interface StreamContextType {
   preferTsLive: boolean;
   preferTsVod: boolean;
   useProxy: boolean;
+  forceHttpLive: boolean;
   isLoading: boolean;
   setActiveSourceId: (id: string) => void;
 }
@@ -66,6 +67,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       preferTsLive: currentSource?.prefer_ts_live ?? true,
       preferTsVod: currentSource?.prefer_ts_vod ?? true,
       useProxy: currentSource?.use_proxy ?? true,
+      forceHttpLive: currentSource?.force_http_live ?? false,
       isLoading,
       setActiveSourceId,
     }}>
