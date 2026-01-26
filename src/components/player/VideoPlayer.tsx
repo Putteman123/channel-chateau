@@ -29,6 +29,21 @@ export interface StreamHttpHeaders {
   referer?: string;
 }
 
+/**
+ * Check if URL should use native HTML5 video instead of Video.js
+ * MP4/MKV files often contain codecs (like HEVC) that MSE can't decode
+ * but native browser video can handle via hardware acceleration
+ */
+function shouldUseNativePlayer(url: string): boolean {
+  try {
+    const pathname = new URL(url).pathname.toLowerCase();
+    return pathname.endsWith('.mp4') || pathname.endsWith('.mkv');
+  } catch {
+    const lowerUrl = url.toLowerCase();
+    return lowerUrl.includes('.mp4') || lowerUrl.includes('.mkv');
+  }
+}
+
 export interface VideoPlayerProps {
   src: string;
   poster?: string;
@@ -136,6 +151,7 @@ export function VideoPlayer({
   httpHeaders,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLDivElement>(null);
+  const nativeVideoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<Player | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -147,8 +163,18 @@ export function VideoPlayer({
   const [playerError, setPlayerError] = useState<PlayerError | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   
   const { isTvMode } = useSpatialNavigation();
+
+  // Determine if we should use native HTML5 video - synkront med useMemo
+  const useNativePlayer = useMemo(() => {
+    const shouldUseNative = shouldUseNativePlayer(src);
+    if (shouldUseNative) {
+      console.log('[VideoPlayer] Using native HTML5 video for MP4/MKV format');
+    }
+    return shouldUseNative;
+  }, [src]);
 
   // Build stream URL with custom headers if provided
   const effectiveSrc = useMemo(() => {
@@ -298,12 +324,19 @@ export function VideoPlayer({
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isTvMode, onClose, showControlsTemporarily]);
 
-  // Initialize player
+  // Initialize Video.js player (only for HLS streams, skip for native player)
   useEffect(() => {
+    // Skip Video.js initialization for native player
+    if (useNativePlayer) {
+      setIsLoading(false);
+      return;
+    }
+    
     if (!videoRef.current || !effectiveSrc) return;
     
     // Reset error state when source changes
     setPlayerError(null);
+    setIsLoading(true);
 
     // Create video element if not exists
     if (!playerRef.current) {
@@ -336,12 +369,14 @@ export function VideoPlayer({
         }
         setDuration(player.duration() || 0);
         setPlayerError(null); // Clear error on successful load
+        setIsLoading(false);
       });
 
       // Track play/pause state
       player.on('play', () => {
         setIsPlaying(true);
         setPlayerError(null);
+        setIsLoading(false);
       });
       player.on('pause', () => setIsPlaying(false));
 
@@ -371,6 +406,7 @@ export function VideoPlayer({
         const diagnosis = diagnoseError(effectiveSrc, error?.code, error?.message);
         console.error('[VideoPlayer] Diagnosis:', diagnosis);
         setPlayerError({ ...diagnosis, httpStatus });
+        setIsLoading(false);
         
         // Update diagnostics with error info
         setDiagnostics(prev => prev ? {
@@ -393,7 +429,7 @@ export function VideoPlayer({
         player.poster(poster);
       }
     }
-  }, [effectiveSrc, poster, autoPlay, startPosition, getSourceType, onEnded, isTvMode]);
+  }, [effectiveSrc, poster, autoPlay, startPosition, getSourceType, onEnded, isTvMode, useNativePlayer]);
 
   // Progress tracking
   useEffect(() => {
@@ -465,6 +501,51 @@ export function VideoPlayer({
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Handle native video error - fallback to external player
+  const handleNativeVideoError = () => {
+    console.error('[VideoPlayer] Native video error - codec may not be supported');
+    setPlayerError({
+      type: 'decode',
+      message: 'Filformatet stöds ej av webbläsaren',
+      details: 'Videon kan innehålla codecs (t.ex. HEVC/H.265) som din webbläsare inte kan spela upp. Öppna i en extern spelare som VLC.',
+    });
+    setIsLoading(false);
+    setDiagnostics(prev => prev ? {
+      ...prev,
+      lastError: 'Native video playback failed - unsupported codec',
+    } : null);
+  };
+
+  // Handle native video loaded - set start position
+  const handleNativeVideoLoaded = () => {
+    setIsLoading(false);
+    if (startPosition > 0 && nativeVideoRef.current) {
+      nativeVideoRef.current.currentTime = startPosition;
+    }
+    setDuration(nativeVideoRef.current?.duration || 0);
+  };
+
+  // Handle native video time update
+  const handleNativeTimeUpdate = () => {
+    if (nativeVideoRef.current) {
+      setCurrentTime(nativeVideoRef.current.currentTime);
+    }
+  };
+
+  // Handle native video play/pause
+  const handleNativePlay = () => setIsPlaying(true);
+  const handleNativePause = () => setIsPlaying(false);
+
+  // Get external URL for external players
+  const externalUrl = useMemo(() => {
+    if (originalStreamUrl) return originalStreamUrl;
+    if (isProxiedUrl(effectiveSrc)) {
+      const extracted = extractOriginalFromProxy(effectiveSrc);
+      if (extracted) return extracted;
+    }
+    return effectiveSrc;
+  }, [effectiveSrc, originalStreamUrl]);
 
   return (
     <div 
@@ -757,14 +838,46 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Video.js container */}
-      <div 
-        data-vjs-player 
-        className="aspect-video w-full overflow-hidden rounded-xl shadow-2xl"
-        onClick={togglePlay}
-      >
-        <div ref={videoRef} />
-      </div>
+      {/* Native HTML5 Video Player for MP4/MKV */}
+      {useNativePlayer && (
+        <div className="aspect-video w-full overflow-hidden rounded-xl shadow-2xl">
+          <video
+            ref={nativeVideoRef}
+            src={effectiveSrc}
+            className="h-full w-full"
+            poster={poster}
+            controls
+            playsInline
+            autoPlay={autoPlay}
+            crossOrigin="anonymous"
+            onError={handleNativeVideoError}
+            onLoadedData={handleNativeVideoLoaded}
+            onLoadStart={() => setIsLoading(true)}
+            onTimeUpdate={handleNativeTimeUpdate}
+            onPlay={handleNativePlay}
+            onPause={handleNativePause}
+            onEnded={onEnded}
+          />
+        </div>
+      )}
+
+      {/* Video.js container for HLS streams */}
+      {!useNativePlayer && (
+        <div 
+          data-vjs-player 
+          className="aspect-video w-full overflow-hidden rounded-xl shadow-2xl"
+          onClick={togglePlay}
+        >
+          <div ref={videoRef} />
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {isLoading && !playerError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none z-5">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      )}
 
       {/* Custom TV Mode Controls */}
       {isTvMode && (
