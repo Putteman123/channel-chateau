@@ -27,10 +27,15 @@ import * as XtreamAPI from '@/lib/xtream-api';
 import { SubscriptionBadge } from '@/components/subscription/SubscriptionBadge';
 import { parseXtreamExpDate } from '@/lib/subscription-utils';
 
-// Xtream schema
+// Xtream schema - with validation to prevent using proxy domain as server URL
 const xtreamSchema = z.object({
   name: z.string().min(1, 'Namn krävs').max(50),
-  server_url: z.string().min(1, 'Server URL krävs'),
+  server_url: z.string()
+    .min(1, 'Server URL krävs')
+    .refine(
+      (url) => !url.includes('line.premiumvinted.se'),
+      'Ange din IPTV-servers URL, inte proxy-domänen (line.premiumvinted.se). Proxy-domänen används automatiskt.'
+    ),
   username: z.string().min(1, 'Användarnamn krävs'),
   password: z.string().min(1, 'Lösenord krävs'),
 });

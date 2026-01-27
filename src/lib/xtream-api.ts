@@ -239,8 +239,10 @@ export function buildLiveStreamUrl(
   const isServerAlreadyProxy = CUSTOM_PROXY_DOMAIN && base.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname);
   if (isServerAlreadyProxy) {
     console.error('[XtreamAPI] ❌ server_url är felaktigt inställd till proxy-domänen!');
-    console.error('[XtreamAPI] Ändra server_url till din riktiga IPTV-server i Inställningar → Källor');
-    return ''; // Return empty to prevent broken URL construction
+    console.error('[XtreamAPI] Din server_url:', base);
+    console.error('[XtreamAPI] Gå till Inställningar → Källor och ändra till din riktiga IPTV-server');
+    // Return error URL for diagnostics instead of empty string
+    return 'error://server_url_is_proxy_domain';
   }
   
   // Force HTTP protocol if requested (many IPTV providers don't support HTTPS for live)
