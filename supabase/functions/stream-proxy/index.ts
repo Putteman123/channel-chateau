@@ -225,11 +225,12 @@ serve(async (req) => {
       // Get base URL for relative paths
       const baseUrl = decodedUrl.substring(0, decodedUrl.lastIndexOf("/") + 1);
       
-      // CRITICAL: Use the custom Cloudflare proxy domain for segment URLs
-      // The req.url may contain internal Supabase URLs which don't match the public domain
-      // We MUST use HTTPS to avoid Mixed Content blocking in browsers
-      const CUSTOM_PROXY_DOMAIN = "https://line.premiumvinted.se";
-      const proxyBase = `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
+      // DYNAMICALLY determine proxy domain from request URL
+      // This allows the proxy to work whether called via Cloudflare custom domain or Supabase directly
+      // The segments will route through the same domain as the initial request
+      const requestUrl = new URL(req.url);
+      const proxyBase = `${requestUrl.origin}/functions/v1/stream-proxy`;
+      console.log(`[stream-proxy] Using proxy base: ${proxyBase}`);
       
       // Build query params to propagate custom headers
       const headerParams = [];

@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
 import { XtreamCredentials } from '@/lib/xtream-api';
+import { testCustomDomain, getCustomDomainStatus } from '@/lib/proxy-config';
 
 interface StreamContextType {
   sources: StreamSource[];
@@ -24,6 +25,14 @@ const StreamContext = createContext<StreamContextType | undefined>(undefined);
 export function StreamProvider({ children }: { children: ReactNode }) {
   const { sources, activeSource, isLoading, updateSource } = useStreamSources();
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Test custom proxy domain availability on mount
+  useEffect(() => {
+    testCustomDomain().then(available => {
+      console.log(`[StreamContext] Custom proxy domain: ${available ? 'AVAILABLE' : 'UNAVAILABLE (using Supabase fallback)'}`);
+      console.log(`[StreamContext] Proxy status: ${getCustomDomainStatus()}`);
+    });
+  }, []);
 
   const currentSource = activeId 
     ? sources.find(s => s.id === activeId) 
