@@ -4,10 +4,14 @@
  */
 
 // Custom Cloudflare domain for proxying streams
+// This is the domain that Cloudflare routes to the Supabase Edge Function
 export const CUSTOM_PROXY_DOMAIN = 'https://line.premiumvinted.se';
 
 // Whether to use custom domain or default Supabase
 export const USE_CUSTOM_PROXY = true;
+
+// Extract hostname from custom domain for URL matching
+export const CUSTOM_PROXY_HOSTNAME = CUSTOM_PROXY_DOMAIN ? new URL(CUSTOM_PROXY_DOMAIN).hostname : '';
 
 // Build the proxy base URL
 export function getProxyBaseUrl(): string {
