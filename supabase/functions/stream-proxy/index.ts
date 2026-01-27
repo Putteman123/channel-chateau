@@ -197,7 +197,12 @@ serve(async (req) => {
       
       // Get base URL for relative paths
       const baseUrl = decodedUrl.substring(0, decodedUrl.lastIndexOf("/") + 1);
-      const proxyBase = req.url.split("?")[0];
+      
+      // CRITICAL: Use the custom Cloudflare proxy domain for segment URLs
+      // The req.url may contain internal Supabase URLs which don't match the public domain
+      // We MUST use HTTPS to avoid Mixed Content blocking in browsers
+      const CUSTOM_PROXY_DOMAIN = "https://line.premiumvinted.se";
+      const proxyBase = `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
       
       // Build query params to propagate custom headers
       const headerParams = [];
@@ -235,7 +240,7 @@ serve(async (req) => {
         return line;
       }).join("\n");
 
-      console.log(`[stream-proxy] Rewrote m3u8 playlist (${text.length} bytes)`);
+      console.log(`[stream-proxy] Rewrote m3u8 playlist (${text.length} bytes) with proxy: ${proxyBase}`);
 
       return new Response(rewrittenPlaylist, {
         headers: {
