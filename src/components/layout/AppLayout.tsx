@@ -21,7 +21,7 @@ function TvModeIndicator() {
   );
 }
 
-function AppLayoutContent() {
+function AppLayoutInner() {
   const navigate = useNavigate();
   const { isTvMode } = useSpatialNavigation();
   const { sources } = useStream();
@@ -63,12 +63,17 @@ function AppLayoutContent() {
   );
 }
 
-export function AppLayout() {
+// Wrapper that ensures providers are initialized before inner content renders
+function AppLayoutContent() {
   return (
     <StreamProvider>
       <SpatialNavigationProvider>
-        <AppLayoutContent />
+        <AppLayoutInner />
       </SpatialNavigationProvider>
     </StreamProvider>
   );
+}
+
+export function AppLayout() {
+  return <AppLayoutContent />;
 }
