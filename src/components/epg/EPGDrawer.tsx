@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { EPGInfo } from './EPGInfo';
+import { getImageProxyUrl } from '@/lib/stream-utils';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 interface EPGDrawerProps {
@@ -29,7 +30,7 @@ export function EPGDrawer({
           <SheetTitle className="flex items-center gap-3">
             {channel.stream_icon && (
               <img
-                src={channel.stream_icon}
+                src={getImageProxyUrl(channel.stream_icon)}
                 alt={channel.name}
                 className="h-10 w-10 rounded object-contain"
               />

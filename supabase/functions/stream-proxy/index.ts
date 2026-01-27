@@ -257,11 +257,16 @@ serve(async (req) => {
 
     console.log(`[stream-proxy] Streaming ${contentType} (${contentLength || 'unknown'} bytes)`);
 
+    // Detect if this is an image for better caching
+    const isImage = contentType.includes('image') || 
+                    decodedUrl.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i);
+
     // Build response headers
     const responseHeaders: Record<string, string> = {
       ...corsHeaders,
       "Content-Type": contentType,
-      "Cache-Control": "max-age=300",
+      // Use longer cache for images (24h), shorter for streams (5min)
+      "Cache-Control": isImage ? "max-age=86400, public" : "max-age=300",
     };
 
     // Pass through content-length if available

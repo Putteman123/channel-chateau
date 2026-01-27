@@ -2,6 +2,7 @@ import { Heart, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EPGInfo } from './EPGInfo';
 import { cn } from '@/lib/utils';
+import { getImageProxyUrl } from '@/lib/stream-utils';
 import * as XtreamAPI from '@/lib/xtream-api';
 import { useFocusable } from '@/hooks/useFocusable';
 
@@ -40,7 +41,7 @@ export function ChannelCard({
       <div className="relative aspect-video bg-muted">
         {channel.stream_icon ? (
           <img
-            src={channel.stream_icon}
+            src={getImageProxyUrl(channel.stream_icon)}
             alt={channel.name}
             className="h-full w-full object-contain p-4"
             loading="lazy"
