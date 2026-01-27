@@ -182,14 +182,16 @@ function shouldUseProxy(url: string): boolean {
   return url.startsWith('http://') && window.location.protocol === 'https:';
 }
 
-// Wrap URL through stream proxy
+// Wrap URL through stream proxy using custom Cloudflare domain
+import { getProxyBaseUrl } from './proxy-config';
+
 function proxyStreamUrl(url: string): string {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  if (!supabaseUrl) {
-    console.warn('[XtreamAPI] VITE_SUPABASE_URL not set, cannot use stream proxy');
+  const proxyBase = getProxyBaseUrl();
+  if (!proxyBase) {
+    console.warn('[XtreamAPI] No proxy URL configured, cannot use stream proxy');
     return url;
   }
-  return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(url)}`;
+  return `${proxyBase}?url=${encodeURIComponent(url)}`;
 }
 
 // Build stream URL for live channels
