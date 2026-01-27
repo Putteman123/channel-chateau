@@ -72,6 +72,9 @@ serve(async (req) => {
       // Invalid URL, skip origin headers
     }
 
+    // Get Range header from incoming request (important for VOD seeking)
+    const rangeHeader = req.headers.get("Range");
+    
     // Build fetch headers - use custom values if provided, otherwise defaults
     // Use "IPTV Smarters Pro" as default - widely accepted by IPTV providers
     const fetchHeaders: Record<string, string> = {
@@ -80,6 +83,12 @@ serve(async (req) => {
       "Accept-Language": "en-US,en;q=0.9",
       "Connection": "keep-alive",
     };
+
+    // Forward Range header for VOD seeking support
+    if (rangeHeader) {
+      fetchHeaders["Range"] = rangeHeader;
+      console.log(`[stream-proxy] Forwarding Range header: ${rangeHeader}`);
+    }
 
     // Use custom referer if provided, otherwise fall back to stream origin
     if (customReferer) {
@@ -136,45 +145,62 @@ serve(async (req) => {
           redirect: "follow",
         });
 
-        if (response.ok) {
-          console.log(`[stream-proxy] Success with: ${urlToTry.substring(0, 60)}...`);
+        // Accept 200 OK and 206 Partial Content (for Range requests)
+        if (response.ok || response.status === 206) {
+          console.log(`[stream-proxy] Success (HTTP ${response.status}) with: ${urlToTry.substring(0, 60)}...`);
           break;
         } else {
-          console.warn(`[stream-proxy] HTTP ${response.status} from: ${urlToTry.substring(0, 60)}...`);
-          lastError = new Error(`HTTP ${response.status}`);
+          const statusCode = response.status;
+          console.error(`[stream-proxy] HTTP ${statusCode} from: ${urlToTry.substring(0, 60)}...`);
+          lastError = new Error(`HTTP ${statusCode}`);
+          // Store the actual status for error response
+          (lastError as any).httpStatus = statusCode;
           response = null;
         }
       } catch (err) {
-        console.warn(`[stream-proxy] Connection failed: ${err}`);
+        console.error(`[stream-proxy] Connection failed: ${err}`);
         lastError = err instanceof Error ? err : new Error(String(err));
         response = null;
       }
     }
 
-    if (!response || !response.ok) {
+    if (!response || (!response.ok && response.status !== 206)) {
       const isConnectionRefused = lastError?.message?.includes("Connection refused") || 
                                    lastError?.message?.includes("ECONNREFUSED");
       const isHttp458 = lastError?.message?.includes("458");
+      const actualHttpStatus = (lastError as any)?.httpStatus;
       
-      console.error(`[stream-proxy] All URLs failed. Last error: ${lastError?.message}`);
+      console.error(`[stream-proxy] All URLs failed. Last error: ${lastError?.message}, HTTP status: ${actualHttpStatus || 'unknown'}`);
       
       // Determine the appropriate response status and hint
       let responseStatus: number;
       let errorType: string;
       let hint: string;
       
-      if (isHttp458) {
-        responseStatus = 458; // Return 458 directly so client can detect it
+      if (isHttp458 || actualHttpStatus === 458) {
+        responseStatus = 458;
         errorType = "Provider blocking";
         hint = "HTTP 458 innebär att leverantören aktivt blockerar datacenter-IP. Öppna strömmen i VLC eller annan extern spelare för att använda din hem-IP.";
+      } else if (actualHttpStatus === 403) {
+        responseStatus = 403;
+        errorType = "Access denied";
+        hint = "Åtkomst nekad (HTTP 403). Kontrollera att din prenumeration är aktiv och att inloggningsuppgifterna är korrekta.";
+      } else if (actualHttpStatus === 404) {
+        responseStatus = 404;
+        errorType = "Not found";
+        hint = "Strömmen hittades inte (HTTP 404). Kontrollera att URL:en är korrekt.";
+      } else if (actualHttpStatus === 500 || actualHttpStatus === 503) {
+        responseStatus = actualHttpStatus;
+        errorType = "Server error";
+        hint = `IPTV-servern returnerade ett fel (HTTP ${actualHttpStatus}). Servern kan vara överbelastad eller nere.`;
       } else if (isConnectionRefused) {
         responseStatus = 502;
         errorType = "Connection refused";
         hint = "Din IPTV-leverantör blockerar anslutningar från datacenter. Öppna strömmen i VLC eller annan extern spelare.";
       } else {
-        responseStatus = 502;
+        responseStatus = actualHttpStatus || 502;
         errorType = "Upstream unreachable";
-        hint = "Strömmen är inte tillgänglig. Kontrollera att URL:en är korrekt och att din prenumeration är aktiv.";
+        hint = `Strömmen är inte tillgänglig (HTTP ${actualHttpStatus || 'okänd'}). Kontrollera att URL:en är korrekt och att din prenumeration är aktiv.`;
       }
       
       return new Response(
@@ -182,8 +208,8 @@ serve(async (req) => {
           error: errorType,
           details: lastError?.message || "Could not connect to stream",
           hint,
-          httpStatus: isHttp458 ? 458 : responseStatus,
-          isProviderBlocking: isHttp458 || isConnectionRefused,
+          httpStatus: responseStatus,
+          isProviderBlocking: isHttp458 || isConnectionRefused || actualHttpStatus === 458,
         }),
         { status: responseStatus, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -261,7 +287,9 @@ serve(async (req) => {
       );
     }
 
-    console.log(`[stream-proxy] Streaming ${contentType} (${contentLength || 'unknown'} bytes)`);
+    // Use upstream status (200 or 206 for partial content)
+    const upstreamStatus = response.status;
+    console.log(`[stream-proxy] Streaming ${contentType} (${contentLength || 'unknown'} bytes, HTTP ${upstreamStatus})`);
 
     // Detect if this is an image for better caching
     const isImage = contentType.includes('image') || 
@@ -288,9 +316,26 @@ serve(async (req) => {
       responseHeaders["Content-Length"] = contentLength;
     }
 
+    // Forward Content-Range header for 206 Partial Content responses
+    const contentRange = response.headers.get("content-range");
+    if (contentRange) {
+      responseHeaders["Content-Range"] = contentRange;
+      console.log(`[stream-proxy] Forwarding Content-Range: ${contentRange}`);
+    }
+
+    // Forward Accept-Ranges header
+    const acceptRanges = response.headers.get("accept-ranges");
+    if (acceptRanges) {
+      responseHeaders["Accept-Ranges"] = acceptRanges;
+    } else {
+      // Indicate we support range requests
+      responseHeaders["Accept-Ranges"] = "bytes";
+    }
+
     // Pipe the stream directly - no buffering!
+    // Use upstream status (200 or 206) to properly support Range requests
     return new Response(response.body, {
-      status: 200,
+      status: upstreamStatus,
       headers: responseHeaders,
     });
 

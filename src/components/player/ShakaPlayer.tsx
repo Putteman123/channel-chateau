@@ -166,8 +166,8 @@ function diagnoseError(
   if (errorCode === 1002) {
     return {
       type: 'network',
-      message: 'HTTP-fel vid hämtning av ström',
-      details: errorMessage || 'Servern returnerade ett fel. Strömmen kan vara otillgänglig. Prova öppna i VLC.',
+      message: 'Servern svarade inte',
+      details: 'Kontrollera att din leverantör tillåter server-proxies. Många IPTV-leverantörer blockerar datacenter-IP:er. Prova öppna i VLC för att spela via din egen IP.',
       code: errorCode,
     };
   }
