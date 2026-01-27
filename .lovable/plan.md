@@ -1,152 +1,107 @@
 
+# Plan: Förbättra Stream Proxy Headers & Diagnostik
 
-# Plan: Fixa Proxy-konfiguration & Server URL
+## Sammanfattning
 
-## Problemsammanfattning
+Diagnostiken visar att proxyn är korrekt konfigurerad men videon laddas inte. Det mest troliga problemet är att IPTV-leverantören blockerar anrop från datacenter-IP:er (Supabase/Cloudflare), oavsett vilken User-Agent som skickas.
 
-Diagnostikpanelen visar:
-- **URL:** `http://line.premiumvinted.se/live/.../79892.ts`
-- **Proxy:** `Ja` (falskt positiv)
+Men vi kan göra flera förbättringar för att:
+1. Prova fler User-Agent-varianter
+2. Förbättra Content-Type-hantering
+3. Lägga till en "Testa Proxy"-länk för enkel felsökning
 
-Problemet är att `server_url` i databasen är satt till **proxy-domänen** (`https://line.premiumvinted.se`) istället för den riktiga IPTV-servern (t.ex. `http://line.myox.me`).
+## Teknisk analys
 
-## Rotorsak
+### Nuvarande status i `stream-proxy/index.ts`:
+- Använder redan `VLC/3.0.20 LibVLC/3.0.20` som User-Agent (rad 77)
+- Har redan `Accept: */*` och `Connection: keep-alive` (rad 78-80)
+- Sätter korrekt `Content-Type: application/vnd.apple.mpegurl` för m3u8 (rad 248)
 
-Databasinnehåll:
-```
-server_url: https://line.premiumvinted.se (FEL!)
-```
+### Föreslagna förbättringar:
 
-Detta gör att koden bygger URL:er som:
-```
-http://line.premiumvinted.se/live/username/password/79892.ts
-```
+## Ändringar
 
-Istället för att wrappa den riktiga strömmen via proxyn:
-```
-https://line.premiumvinted.se/functions/v1/stream-proxy?url=http://line.myox.me/live/.../79892.m3u8
-```
+### 1. `supabase/functions/stream-proxy/index.ts`
 
-## Lösning i två steg
-
-### Steg 1: Uppdatera server_url i databasen
-
-Du måste ändra `server_url` till din riktiga IPTV-servers adress. Baserat på tidigare loggar verkar den vara `http://line.myox.me`.
-
-**Åtgärd:** Gå till **Inställningar → Källor**, klicka på pennikonen för att redigera din källa, och ändra:
-
-| Fält | Nuvarande (fel) | Korrekt |
-|------|-----------------|---------|
-| Server URL | `https://line.premiumvinted.se` | `http://line.myox.me` (din riktiga IPTV-server) |
-
-### Steg 2: Förbättra kodvalidering (valfritt men rekommenderat)
-
-Lägg till validering i Sources.tsx för att varna användaren om de försöker spara proxy-domänen som server_url.
-
-**Ändringar i `src/pages/settings/Sources.tsx`:**
+**Förbättra User-Agent till "IPTV Smarters Pro"** (mer populär app bland leverantörer):
 
 ```typescript
-// Lägg till i xtreamSchema (rad 31-36)
-const xtreamSchema = z.object({
-  name: z.string().min(1, 'Namn krävs').max(50),
-  server_url: z.string()
-    .min(1, 'Server URL krävs')
-    .refine(
-      (url) => !url.includes('line.premiumvinted.se'), 
-      'Ange din IPTV-servers URL, inte proxy-domänen (line.premiumvinted.se)'
-    ),
-  username: z.string().min(1, 'Användarnamn krävs'),
-  password: z.string().min(1, 'Lösenord krävs'),
-});
+// Rad 76-81 - Byt standard User-Agent
+const fetchHeaders: Record<string, string> = {
+  "User-Agent": customUserAgent || "IPTV Smarters Pro/3.0.9",
+  "Accept": "*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Connection": "keep-alive",
+};
 ```
 
-**Ändringar i `src/lib/xtream-api.ts`:**
-
-Förbättra felmeddelandet i `buildLiveStreamUrl()` (rad 239-244) för att returnera ett mer informativt fel:
+**Förbättra Content-Type för .ts-segment** (rad 270-275):
 
 ```typescript
-// Rad 239-244 - Förbättra felmeddelande och returnera fallback
-const isServerAlreadyProxy = CUSTOM_PROXY_DOMAIN && base.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname);
-if (isServerAlreadyProxy) {
-  console.error('[XtreamAPI] ❌ server_url är satt till proxy-domänen!');
-  console.error('[XtreamAPI] Din server_url:', base);
-  console.error('[XtreamAPI] Gå till Inställningar → Källor och ändra till din riktiga IPTV-server');
-  // Returnera en placeholder-URL för bättre feldiagnostik
-  return `error://server_url_is_proxy_domain`;
+// Säkerställ korrekt Content-Type för video-segment
+let finalContentType = contentType;
+if (decodedUrl.endsWith('.ts') || decodedUrl.includes('.ts?')) {
+  finalContentType = 'video/mp2t';
+} else if (decodedUrl.includes('.m3u8')) {
+  finalContentType = 'application/vnd.apple.mpegurl';
 }
 ```
 
-**Ändringar i `src/components/player/ShakaPlayer.tsx`:**
+### 2. `src/components/player/ShakaPlayer.tsx`
 
-Lägg till detektering av fel-URL:en i diagnostik:
+**Lägg till "Testa Proxy-nedladdning"-länk** i diagnostik-panelen (efter rad 874):
 
 ```typescript
-// I diagnostik-effekten, lägg till check för felaktig konfiguration
-const isConfigError = effectiveSrc === 'error://server_url_is_proxy_domain' || 
-                      effectiveSrc.startsWith('error://');
-
-// I diagnostik-UI, visa tydligt felmeddelande
-{isConfigError && (
-  <p className="text-destructive font-semibold">
-    ⚠️ Konfigurationsfel: Ändra server_url i Inställningar → Källor
+{/* Test proxy download link */}
+{diagnostics.isProxied && effectiveSrc && (
+  <p className="mt-2">
+    <a 
+      href={effectiveSrc}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary underline hover:no-underline"
+    >
+      🔗 Testa Proxy-nedladdning
+    </a>
+    <span className="ml-2 text-muted-foreground">
+      (Öppnas i ny flik - bör ladda ner textfil)
+    </span>
   </p>
 )}
+```
+
+### 3. Alternativ: Lägg till flera User-Agents att prova
+
+Skapa en lista med populära User-Agents som proxyn kan rotera mellan vid fel:
+
+```typescript
+const USER_AGENTS = [
+  "IPTV Smarters Pro/3.0.9",
+  "VLC/3.0.20 LibVLC/3.0.20", 
+  "Kodi/20.0 (Windows 10; AMD64)",
+  "TiviMate/4.6.0",
+];
 ```
 
 ## Filer som ändras
 
 | Fil | Ändring |
 |-----|---------|
-| `src/pages/settings/Sources.tsx` | Lägg till validering för att förhindra proxy-domän som server_url |
-| `src/lib/xtream-api.ts` | Förbättra felmeddelande och returnera diagnostisk URL |
-| `src/components/player/ShakaPlayer.tsx` | Visa tydligt konfigurationsfel i diagnostik |
+| `supabase/functions/stream-proxy/index.ts` | Ändra User-Agent till "IPTV Smarters Pro", förbättra Content-Type-hantering |
+| `src/components/player/ShakaPlayer.tsx` | Lägg till "Testa Proxy-nedladdning"-länk i diagnostik-panelen |
 
-## Dataflöde efter fix
+## Viktigt att notera
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                          KORREKT KONFIGURATION                      │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Databas: server_url = "http://line.myox.me"                        │
-│        │                                                            │
-│        └─> buildLiveStreamUrl(creds, 79892, {useProxy: true})       │
-│                 │                                                   │
-│                 ├─> base = "http://line.myox.me"                    │
-│                 │                                                   │
-│                 └─> directUrl = "http://line.myox.me/live/.../79892.ts"
-│                           │                                         │
-│                           └─> proxyStreamUrl(directUrl, {preferM3u8: true})
-│                                      │                              │
-│                                      ├─> Konvertera .ts → .m3u8     │
-│                                      │                              │
-│                                      └─> Returnerar:                │
-│                                          https://line.premiumvinted.se/
-│                                          functions/v1/stream-proxy?url=
-│                                          http://line.myox.me/.../79892.m3u8
-│                                                 ✅ FUNGERAR!        │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Om IPTV-leverantören blockerar **alla** datacenter-IP:er (Supabase, Cloudflare, AWS, etc.) så spelar User-Agent ingen roll. I sådana fall är den enda lösningen att:
+
+1. Öppna strömmen i VLC/MPV på din lokala dator (använder din hem-IP)
+2. Kontakta IPTV-leverantören för att be om ett undantag
+
+"Testa Proxy-nedladdning"-länken kommer hjälpa dig att se exakt vad proxyn returnerar - om det är en spellista (text) eller ett felmeddelande.
 
 ## Förväntat resultat
 
-Efter att du uppdaterat server_url i databasen ska diagnostikpanelen visa:
-
-```text
-Proxy Route: line.premiumvinted.se ✓ Cloudflare
-
-URL: https://line.premiumvinted.se/functions/v1/stream-proxy?url=http%3A%2F%2Fline.myox.me%2Flive%2F...%2F79892.m3u8
-
-Typ: HLS (.m3u8)
-
-Proxy: Ja ✅
-
-Protokoll: Sida: https / Ström: https
-```
-
-## Åtgärdsprioritet
-
-1. **KRITISKT:** Uppdatera server_url i databasen manuellt
-2. **Rekommenderat:** Implementera kodförbättringar för att förhindra samma misstag i framtiden
-
+Efter ändringarna:
+- Proxyn använder "IPTV Smarters Pro" User-Agent som är mer trolig att accepteras
+- Content-Type sätts korrekt för både m3u8 och ts-filer
+- Diagnostik-panelen har en klickbar länk för att testa proxyn direkt
