@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
+import { getImageProxyUrl } from '@/lib/stream-utils';
 
 export interface LazyImageProps {
   src?: string;
@@ -62,7 +63,13 @@ export function LazyImage({
     square: 'aspect-square',
   };
 
-  const displaySrc = hasError || !src ? fallback : src;
+  // Use proxy for HTTP images on HTTPS pages
+  const effectiveSrc = useMemo(() => {
+    if (!src) return fallback;
+    return getImageProxyUrl(src);
+  }, [src, fallback]);
+
+  const displaySrc = hasError ? fallback : effectiveSrc;
 
   return (
     <div

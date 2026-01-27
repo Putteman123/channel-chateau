@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import * as XtreamAPI from '@/lib/xtream-api';
 import { M3UChannel } from '@/lib/m3u-parser';
+import { getImageProxyUrl } from '@/lib/stream-utils';
 
 // Unified channel type for both Xtream and M3U
 type UnifiedChannel = XtreamAPI.XtreamChannel | M3UChannel;
@@ -249,7 +250,7 @@ export default function LiveTV() {
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-muted">
                   {channel.stream_icon ? (
                     <img
-                      src={channel.stream_icon}
+                      src={getImageProxyUrl(channel.stream_icon)}
                       alt={channel.name}
                       className="h-full w-full object-contain p-1"
                       loading="lazy"

@@ -96,6 +96,31 @@ export function isProxiedUrl(url: string): boolean {
 }
 
 /**
+ * Generate a proxy URL for images to bypass Mixed Content issues
+ */
+export function getImageProxyUrl(imageUrl: string | undefined | null): string {
+  if (!imageUrl) return '';
+  
+  // Don't proxy if already HTTPS or local
+  if (imageUrl.startsWith('https://') || imageUrl.startsWith('/') || imageUrl.startsWith('data:')) {
+    return imageUrl;
+  }
+  
+  // Don't proxy if already proxied
+  if (isProxiedUrl(imageUrl)) {
+    return imageUrl;
+  }
+  
+  // Check if we need to proxy (HTTP on HTTPS page)
+  if (!hasMixedContentIssue(imageUrl)) {
+    return imageUrl;
+  }
+  
+  const proxyBase = `${SUPABASE_URL}/functions/v1/stream-proxy`;
+  return `${proxyBase}?url=${encodeURIComponent(imageUrl)}`;
+}
+
+/**
  * Extract original URL from a proxied URL
  */
 export function extractOriginalUrl(proxyUrl: string): string | null {
