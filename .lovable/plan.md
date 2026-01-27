@@ -1,91 +1,127 @@
 
-# Plan: Fixa Proxy-logik för Filmer
-
-## Sammanfattning
-
-Efter noggrann analys har jag hittat det verkliga problemet. **Proxyn gör redan korrekt piping** (inte redirect). Problemet är hur frontend avgör om proxyn ska användas för VOD-innehåll (filmer).
+# Plan: Fixa Proxy Fallback - Cloudflare-domänen svarar inte
 
 ## Problemanalys
 
-### Nuvarande status i `stream-proxy/index.ts`:
-- Redan korrekt: Använder `new Response(response.body, ...)` (rad 292) - **INTE redirect**
-- Redan korrekt: User-Agent är "IPTV Smarters Pro/3.0.9"
-- Redan korrekt: Content-Type sätts korrekt för .ts och .m3u8
+Din Cloudflare-domän `line.premiumvinted.se` returnerar **ERR_CONNECTION_REFUSED**. Detta betyder att:
+- DNS-uppsättningen kan vara fel
+- Cloudflare Worker/Route är inte konfigurerad
+- Eller domänen har gått offline
 
-### Problem 1: `buildMovieStreamUrl` logik
+Appen är hårdkodad att använda denna domän utan någon fallback-logik.
 
-I `src/lib/xtream-api.ts` (rad 277-288):
+## Lösning
 
-```typescript
-// For VOD, we can optionally use .ts format when proxying
-if (useProxy && shouldUseProxy(directUrl)) {  // <-- Problem här!
-```
+Vi behöver göra appen mer robust genom att:
+1. **Falla tillbaka till Supabase-URL** om Cloudflare-domänen inte fungerar
+2. **Testa domänen vid uppstart** och välja rätt proxy automatiskt
+3. **Ge användaren möjlighet att välja** proxy-domän i inställningar
 
-`shouldUseProxy(directUrl)` kontrollerar Mixed Content. Men om användaren har `useProxy: true` i inställningarna bör vi ALLTID proxya för att undvika CORS/buffering-problem - inte bara vid Mixed Content.
+## Tekniska ändringar
 
-### Problem 2: Användarens inställning
-
-Från network requests ser jag att användarens källa har `"use_proxy":false`. Detta måste vara aktiverat i inställningarna för att proxyn ska användas.
-
-## Ändringar
-
-### 1. `src/lib/xtream-api.ts` - Fixa proxy-logik för VOD
-
-**Rad 277-288** - Ändra villkoret så att `useProxy: true` alltid triggar proxyn:
+### 1. `src/lib/proxy-config.ts` - Lägg till automatisk fallback
 
 ```typescript
-// For VOD, use proxy if explicitly enabled OR if there's a Mixed Content issue
-if (useProxy) {
-  // Always use proxy when user has enabled it - handles CORS and buffering
-  if (preferTs) {
-    const tsUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.ts`;
-    console.log('[XtreamAPI] Using stream proxy (ts) for movie:', tsUrl.substring(0, 50) + '...');
-    return proxyStreamUrl(tsUrl);
+// Supabase fallback URL (always works)
+export const SUPABASE_PROXY_URL = import.meta.env.VITE_SUPABASE_URL 
+  ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-proxy`
+  : '';
+
+// Custom domain (may not always be available)
+export const CUSTOM_PROXY_DOMAIN = 'https://line.premiumvinted.se';
+
+// Cache for domain availability
+let customDomainAvailable: boolean | null = null;
+
+// Test if custom domain is reachable
+export async function testCustomDomain(): Promise<boolean> {
+  if (customDomainAvailable !== null) return customDomainAvailable;
+  
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch(
+      `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`,
+      { method: 'HEAD', signal: controller.signal }
+    );
+    clearTimeout(timeout);
+    
+    customDomainAvailable = response.ok || response.status === 400; // 400 = missing url param = working
+    return customDomainAvailable;
+  } catch {
+    customDomainAvailable = false;
+    return false;
   }
-  console.log('[XtreamAPI] Using stream proxy for movie:', directUrl.substring(0, 50) + '...');
-  return proxyStreamUrl(directUrl);
+}
+
+// Get working proxy URL with automatic fallback
+export async function getWorkingProxyBaseUrl(): Promise<string> {
+  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN) {
+    const isAvailable = await testCustomDomain();
+    if (isAvailable) {
+      return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
+    }
+    console.warn('[proxy-config] Custom domain unavailable, falling back to Supabase');
+  }
+  return SUPABASE_PROXY_URL;
+}
+
+// Sync version for immediate use (uses cached result or Supabase)
+export function getProxyBaseUrl(): string {
+  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN && customDomainAvailable === true) {
+    return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
+  }
+  return SUPABASE_PROXY_URL;
 }
 ```
 
-**Samma ändring för `buildSeriesStreamUrl`** (rad 302-312).
+### 2. `supabase/functions/stream-proxy/index.ts` - Dynamisk proxy-domän
 
-### 2. `src/lib/xtream-api.ts` - Redan korrekt för Live
+Ändra den hårdkodade `CUSTOM_PROXY_DOMAIN` till att använda `req.url` origin:
 
-`buildLiveStreamUrl` (rad 259) gör redan rätt:
 ```typescript
-if (useProxy) {  // Alltid om useProxy är true
-  return proxyStreamUrl(directUrl, { preferM3u8: true });
-}
+// Dynamically determine proxy domain from request
+const requestUrl = new URL(req.url);
+const proxyBase = `${requestUrl.origin}/functions/v1/stream-proxy`;
 ```
 
-### 3. Ingen ändring behövs i `stream-proxy/index.ts`
+Detta gör att oavsett vilken domän som anropas (Cloudflare eller Supabase), kommer segment-URL:er att gå via samma domän.
 
-Proxyn är redan korrekt implementerad med piping. Inga ändringar behövs.
+### 3. Frontend - Testa proxy vid sidladdning
+
+I `App.tsx` eller `StreamContext`, lägg till:
+
+```typescript
+useEffect(() => {
+  // Pre-test proxy availability
+  testCustomDomain().then(available => {
+    console.log('[App] Custom proxy domain available:', available);
+  });
+}, []);
+```
 
 ## Filer som ändras
 
 | Fil | Ändring |
 |-----|---------|
-| `src/lib/xtream-api.ts` | Ändra `buildMovieStreamUrl` och `buildSeriesStreamUrl` för att alltid använda proxy när `useProxy: true` |
+| `src/lib/proxy-config.ts` | Lägg till fallback-logik och domain-test |
+| `supabase/functions/stream-proxy/index.ts` | Använd dynamisk domän från request URL |
+| `src/App.tsx` eller `src/contexts/StreamContext.tsx` | Testa proxy vid uppstart |
 
-## Viktigt: Användaren måste aktivera proxyn
+## Alternativ: Snabb fix (enklaste lösningen)
 
-I **Inställningar -> Källor** måste användaren:
-1. Redigera sin källa
-2. Aktivera "Använd proxy" (för närvarande är den avstängd enligt `use_proxy: false`)
+Om Cloudflare-domänen inte behövs just nu, kan vi helt enkelt **stänga av den anpassade domänen**:
 
-## Teknisk bakgrund
+```typescript
+// proxy-config.ts
+export const USE_CUSTOM_PROXY = false; // <-- Ändra till false
+```
 
-Proxyn gör redan korrekt "transparent tunnel":
-- Hämtar strömmen med `fetch(targetUrl)`
-- Sätter User-Agent: IPTV Smarters Pro
-- Returnerar `new Response(response.body, ...)` - **pipar datan direkt**
-- Sätter `Access-Control-Allow-Origin: *`
-- Kopierar/fixar Content-Type
+Detta gör att alla anrop går via Supabase direkt, som alltid fungerar.
 
-## Förväntat resultat
+## Rekommendation
 
-Efter ändringen:
-- Filmer och serier kommer gå genom proxyn när `useProxy: true`
-- Live TV fungerar redan korrekt
-- Inga Mixed Content-fel oavsett protokoll
+**Snabbaste lösningen**: Stäng av `USE_CUSTOM_PROXY` tills Cloudflare-domänen är korrekt konfigurerad.
+
+**Långsiktigt robust**: Implementera automatisk fallback så appen fungerar oavsett domänstatus.
