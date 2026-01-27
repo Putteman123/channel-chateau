@@ -20,6 +20,7 @@ import {
   isTsStream,
   hasMixedContentIssue,
 } from '@/lib/stream-utils';
+import { getProxyDomainName, isUsingCustomProxy } from '@/lib/proxy-config';
 
 /** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
 export interface StreamHttpHeaders {
@@ -795,6 +796,13 @@ export function ShakaPlayer({
               <CollapsibleContent className="mt-2">
                 {diagnostics && (
                   <div className="rounded border border-border bg-muted/30 p-3 font-mono text-xs space-y-1">
+                    <p>
+                      <strong>Proxy Route:</strong>{' '}
+                      <span className={isUsingCustomProxy() ? 'text-green-500' : 'text-muted-foreground'}>
+                        {getProxyDomainName()}
+                      </span>
+                      {isUsingCustomProxy() && <span className="ml-2 text-green-500">✓ Cloudflare</span>}
+                    </p>
                     <p><strong>Shaka:</strong> v{diagnostics.shakaVersion}</p>
                     <p><strong>URL:</strong> <span className="break-all">{diagnostics.streamUrl}</span></p>
                     <p><strong>Typ:</strong> {diagnostics.urlType}</p>

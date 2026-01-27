@@ -3,7 +3,7 @@
  * Handles proxy URL generation and stream format conversion
  */
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+import { getProxyBaseUrl } from './proxy-config';
 
 export interface ProxyOptions {
   userAgent?: string;
@@ -47,8 +47,9 @@ export function convertTsToM3u8(url: string): string {
  * This routes the stream through our Supabase Edge Function to handle CORS/Mixed Content
  */
 export function getProxyUrl(originalUrl: string, options: ProxyOptions = {}): string {
-  if (!SUPABASE_URL) {
-    console.warn('[stream-utils] VITE_SUPABASE_URL not set, cannot proxy');
+  const proxyBase = getProxyBaseUrl();
+  if (!proxyBase) {
+    console.warn('[stream-utils] No proxy URL configured, cannot proxy');
     return originalUrl;
   }
 
@@ -60,7 +61,6 @@ export function getProxyUrl(originalUrl: string, options: ProxyOptions = {}): st
   }
 
   // Build proxy URL with query parameters
-  const proxyBase = `${SUPABASE_URL}/functions/v1/stream-proxy`;
   const params = new URLSearchParams();
   params.set('url', urlToProxy);
 
@@ -116,7 +116,7 @@ export function getImageProxyUrl(imageUrl: string | undefined | null): string {
     return imageUrl;
   }
   
-  const proxyBase = `${SUPABASE_URL}/functions/v1/stream-proxy`;
+  const proxyBase = getProxyBaseUrl();
   return `${proxyBase}?url=${encodeURIComponent(imageUrl)}`;
 }
 
