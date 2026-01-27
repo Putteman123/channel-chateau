@@ -1,216 +1,194 @@
 
-# Plan: Konfigurera Streaming via Custom Domain (Cloudflare)
+# Plan: Tvinga Proxy-användning & Fixa .TS-format
 
-## Sammanfattning
+## Problemanalys
 
-Du har konfigurerat en egen domän `https://line.premiumvinted.se` via Cloudflare som proxar trafik till din Supabase Edge Function. Detta ger korrekt SSL-stöd och löser Mixed Content-problemet.
+Baserat på debugloggen ser vi:
+- **URL:** `http://line.myox.me/live/1c85861ba5/194cdca188c6/1069434.ts`
+- **Proxy:** `Nej ⚠️`
+- **Protokoll:** `Sida: https: / Ström: http`
 
-Vi ska uppdatera applikationen så att all streamingtrafik (video + bilder) går via denna nya domän istället för den direkta Supabase-URL:en.
+Problemet är att spelaren får den råa HTTP-länken direkt, istället för att gå via proxyn. Detta beror på en bugg i `buildLiveStreamUrl()` i `xtream-api.ts` - funktionen kollar `shouldUseProxy(directUrl)` men denna check fungerar inte korrekt när `useProxy` redan är `true`.
 
----
+## Rotorsak
 
-## Tekniska ändringar
-
-### Steg 1: Skapa konfigurationsfil för proxy-domän
-
-Skapa en ny konfigurationsfil för att centralisera proxy-inställningar:
-
-```text
-Fil: src/lib/proxy-config.ts
+I `xtream-api.ts` rad 252-258:
+```typescript
+if (useProxy) {
+  // BUG: Duplicerad villkorslogik
+  if (shouldUseProxy(directUrl) || useProxy) {
+    return proxyStreamUrl(directUrl);
+  }
+}
 ```
 
+Logiken är korrekt men **problemet är att `preferTs = true` skapar en `.ts`-URL, som sedan inte konverteras till `.m3u8` innan den proxas**.
+
+## Lösning
+
+### Steg 1: Uppdatera `proxyStreamUrl()` i `xtream-api.ts`
+
+Modifiera funktionen att automatiskt konvertera `.ts` → `.m3u8` innan proxying:
+
 ```typescript
-/**
- * Proxy Configuration
- * Configure custom domain for stream proxying via Cloudflare
- */
-
-// Custom Cloudflare domain for proxying streams
-// Falls back to Supabase URL if not set
-export const CUSTOM_PROXY_DOMAIN = 'https://line.premiumvinted.se';
-
-// Whether to use custom domain or default Supabase
-export const USE_CUSTOM_PROXY = true;
-
-// Build the proxy base URL
-export function getProxyBaseUrl(): string {
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN) {
-    return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
+function proxyStreamUrl(url: string, options?: { preferM3u8?: boolean }): string {
+  if (isProxiedUrl(url)) {
+    return url;
   }
   
-  // Fallback to Supabase URL
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  return supabaseUrl ? `${supabaseUrl}/functions/v1/stream-proxy` : '';
-}
-
-// Get the domain name for display purposes
-export function getProxyDomainName(): string {
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN) {
-    return new URL(CUSTOM_PROXY_DOMAIN).hostname;
-  }
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  return supabaseUrl ? new URL(supabaseUrl).hostname : 'unknown';
-}
-```
-
----
-
-### Steg 2: Uppdatera `stream-utils.ts`
-
-Ersätt SUPABASE_URL med den nya konfigurationen:
-
-```typescript
-// Före:
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const proxyBase = `${SUPABASE_URL}/functions/v1/stream-proxy`;
-
-// Efter:
-import { getProxyBaseUrl } from './proxy-config';
-const proxyBase = getProxyBaseUrl();
-```
-
-Uppdatera funktionerna:
-- `getProxyUrl()` - Använd `getProxyBaseUrl()`
-- `getImageProxyUrl()` - Använd `getProxyBaseUrl()`
-
----
-
-### Steg 3: Uppdatera `xtream-api.ts`
-
-Uppdatera `proxyStreamUrl()` funktionen:
-
-```typescript
-// Före:
-function proxyStreamUrl(url: string): string {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(url)}`;
-}
-
-// Efter:
-import { getProxyBaseUrl } from './proxy-config';
-
-function proxyStreamUrl(url: string): string {
   const proxyBase = getProxyBaseUrl();
   if (!proxyBase) {
     console.warn('[XtreamAPI] No proxy URL configured');
     return url;
   }
-  return `${proxyBase}?url=${encodeURIComponent(url)}`;
+  
+  // Konvertera .ts till .m3u8 för bättre webbläsarkompatibilitet
+  let urlToProxy = url;
+  if (options?.preferM3u8 !== false && url.endsWith('.ts')) {
+    urlToProxy = url.replace('.ts', '.m3u8');
+    console.log('[XtreamAPI] Converting .ts → .m3u8:', urlToProxy);
+  }
+  
+  const proxiedUrl = `${proxyBase}?url=${encodeURIComponent(urlToProxy)}`;
+  console.log('[XtreamAPI] Original:', url);
+  console.log('[XtreamAPI] Final Proxy URL:', proxiedUrl);
+  return proxiedUrl;
 }
 ```
 
----
+### Steg 2: Förenkla `buildLiveStreamUrl()` 
 
-### Steg 4: Uppdatera `stream-proxy` Edge Function
-
-Säkerställ att CORS tillåter trafik från din app:
+Ta bort duplicerad logik och tvinga alltid proxy för externa strömmar:
 
 ```typescript
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",  // Tillåt alla för nu
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-};
+export function buildLiveStreamUrl(
+  creds: XtreamCredentials, 
+  streamId: number, 
+  options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean } = {}
+): string {
+  const { useProxy = true, preferTs = true, forceHttp = false } = options;
+  let base = buildBaseUrl(creds);
+  
+  // Varning om server_url är satt till vår proxy-domän
+  const isServerAlreadyProxy = CUSTOM_PROXY_DOMAIN && 
+    base.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname);
+  if (isServerAlreadyProxy) {
+    console.error('[XtreamAPI] ❌ server_url är felaktigt inställd!');
+    return '';
+  }
+  
+  // Force HTTP om begärt
+  if (forceHttp && base.startsWith('https://')) {
+    base = base.replace('https://', 'http://');
+  }
+  
+  // Bygg direkt-URL (alltid .ts från IPTV-servern)
+  const extension = preferTs ? 'ts' : 'm3u8';
+  const directUrl = `${base}/live/${creds.username}/${creds.password}/${streamId}.${extension}`;
+  
+  // ALLTID använd proxy om aktiverat (konverterar .ts → .m3u8)
+  if (useProxy) {
+    return proxyStreamUrl(directUrl, { preferM3u8: true });
+  }
+  
+  return directUrl;
+}
 ```
 
-Edge function strömmar redan data via `ReadableStream` (piping) så ingen buffring sker.
+### Steg 3: Uppdatera `isProxiedUrl()` i `stream-utils.ts`
 
----
-
-### Steg 5: Lägg till debug-indikator i ShakaPlayer
-
-Visa proxy-rutt för admin/dev-mode:
+Förbättra detekteringen att verifiera korrekt proxy-format:
 
 ```typescript
-// I ShakaPlayer.tsx diagnostics-panelen:
-{diagnostics && (
-  <div className="text-xs text-muted-foreground">
-    <p>Proxy Route: {getProxyDomainName()}</p>
-    <p>Stream: {diagnostics.urlType}</p>
-    {diagnostics.isProxied && <p className="text-green-500">✓ Proxied</p>}
-  </div>
-)}
+export function isProxiedUrl(url: string): boolean {
+  // Korrekt proxy-format: måste innehålla ?url= parameter
+  const hasProxyPath = url.includes('/functions/v1/stream-proxy');
+  const hasUrlParam = url.includes('?url=');
+  
+  // Fullständig proxy: path + parameter
+  if (hasProxyPath && hasUrlParam) return true;
+  
+  // Custom domain med url-parameter
+  const customDomain = 'line.premiumvinted.se';
+  if (url.includes(customDomain) && hasUrlParam) return true;
+  
+  return false;
+}
 ```
 
----
+### Steg 4: Uppdatera diagnostik i `ShakaPlayer.tsx`
 
-## Filer att ändra
+Fixa logiken som visar proxy-status:
+
+```typescript
+// Rad 284 - förbättrad isProxied-check
+const isProxied = isProxiedUrl(effectiveSrc);
+
+// Lägg till varning om URL är HTTP utan proxy
+const hasMixedContent = !isProxied && 
+  effectiveSrc.startsWith('http://') && 
+  pageProtocol === 'https:';
+```
+
+## Filer som ändras
 
 | Fil | Ändring |
 |-----|---------|
-| `src/lib/proxy-config.ts` | **NY** - Centraliserad proxy-konfiguration |
-| `src/lib/stream-utils.ts` | Använd `getProxyBaseUrl()` istället för SUPABASE_URL |
-| `src/lib/xtream-api.ts` | Använd `getProxyBaseUrl()` för stream proxy |
-| `src/components/player/ShakaPlayer.tsx` | Lägg till proxy route i diagnostics |
-| `supabase/functions/stream-proxy/index.ts` | Verifiera CORS-headers |
-
----
-
-## Arkitekturdiagram
-
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│                        FÖRE (Mixed Content)                      │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  [Browser HTTPS]                                                 │
-│       │                                                          │
-│       ├──> https://qeeqaqsftdrtnlceqzcj.supabase.co/...          │
-│       │         │                                                │
-│       │         └──> http://iptv-provider/stream.m3u8            │
-│       │                  ❌ Blocked by Mixed Content             │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────────┐
-│                     EFTER (Cloudflare Proxy)                     │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  [Browser HTTPS]                                                 │
-│       │                                                          │
-│       └──> https://line.premiumvinted.se/functions/v1/stream-proxy
-│                   │                                              │
-│                   ├──> [Cloudflare CDN] (SSL + Caching)          │
-│                   │         │                                    │
-│                   │         └──> https://supabase.co/edge-fn     │
-│                   │                    │                         │
-│                   │                    └──> http://iptv-provider │
-│                   │                              ✅ Fungerar!    │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## .ts till .m3u8 konvertering
-
-Logiken finns redan i `stream-utils.ts`:
-
-```typescript
-// convertTsToM3u8() - Konverterar .ts till .m3u8
-// preferM3u8 option i getProxyUrl() använder detta
-
-// Exempel:
-// Input:  http://provider/live/user/pass/123.ts
-// Output: http://provider/live/user/pass/123.m3u8
-```
-
-Denna logik aktiveras via `preferM3u8: true` i `getProxyUrl()`.
-
----
+| `src/lib/xtream-api.ts` | Uppdatera `proxyStreamUrl()` och `buildLiveStreamUrl()` |
+| `src/lib/stream-utils.ts` | Förbättra `isProxiedUrl()` för korrekt format-check |
+| `src/components/player/ShakaPlayer.tsx` | Uppdatera diagnostik för Mixed Content-varning |
 
 ## Förväntat resultat
 
-1. **Alla strömmar** går via `https://line.premiumvinted.se`
-2. **Cloudflare** hanterar SSL-terminering
-3. **Ingen Mixed Content** - allt är HTTPS
-4. **Debug-info** visar "Proxy Route: line.premiumvinted.se" för admin
-5. **Bilder** proxas också via samma domän
+Efter implementering ska debug-panelen visa:
 
----
+```text
+Proxy Route: line.premiumvinted.se ✓ Cloudflare
 
-## Framtida förbättringar (valfritt)
+URL: https://line.premiumvinted.se/functions/v1/stream-proxy?url=http%3A%2F%2Fline.myox.me%2Flive%2F...%2F1069434.m3u8
 
-- Lägg till `CUSTOM_PROXY_DOMAIN` som miljövariabel istället för hårdkodad
-- Implementera fallback till Supabase om custom domain inte svarar
-- Lägg till Cloudflare Workers för ytterligare optimering
+Typ: HLS (.m3u8)
+
+Proxy: Ja ✅
+
+Protokoll: Sida: https / Ström: https
+```
+
+## Dataflöde efter fix
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                          FÖRE (Fel)                                 │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ChannelPlayer.getStreamUrl()                                       │
+│        │                                                            │
+│        └─> buildLiveStreamUrl(useProxy=true)                        │
+│                 │                                                   │
+│                 └─> Returnerar: http://line.myox.me/.../1069434.ts  │
+│                           │                                         │
+│                           └─> ShakaPlayer försöker ladda HTTP       │
+│                                      ❌ Mixed Content blockerar     │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                          EFTER (Korrekt)                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ChannelPlayer.getStreamUrl()                                       │
+│        │                                                            │
+│        └─> buildLiveStreamUrl(useProxy=true)                        │
+│                 │                                                   │
+│                 └─> proxyStreamUrl(directUrl, {preferM3u8: true})   │
+│                           │                                         │
+│                           ├─> Konvertera .ts → .m3u8                │
+│                           │                                         │
+│                           └─> Returnerar:                           │
+│                               https://line.premiumvinted.se/        │
+│                               functions/v1/stream-proxy?url=        │
+│                               http://line.myox.me/.../1069434.m3u8  │
+│                                      ✅ Fungerar!                   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
