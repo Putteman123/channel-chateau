@@ -272,9 +272,30 @@ export function ShakaPlayer({
     return effectiveSrc;
   }, [effectiveSrc, originalStreamUrl]);
 
+  // Detect configuration error (server_url set to proxy domain)
+  const isConfigError = effectiveSrc === 'error://server_url_is_proxy_domain' || 
+                        effectiveSrc.startsWith('error://');
+
   // Analyze stream URL and set diagnostics
   useEffect(() => {
     if (effectiveSrc) {
+      // Handle config error specially
+      if (isConfigError) {
+        setDiagnostics({
+          streamUrl: effectiveSrc,
+          urlType: 'Fel',
+          isProxied: false,
+          protocol: 'http',
+          pageProtocol: typeof window !== 'undefined' ? window.location.protocol : 'unknown',
+          isTsFormat: false,
+          shakaVersion: shaka.Player.version,
+          lastError: 'server_url är satt till proxy-domänen istället för din IPTV-server',
+        });
+        console.error('[ShakaPlayer] ❌ Konfigurationsfel: server_url är satt till proxy-domänen!');
+        console.error('[ShakaPlayer] Gå till Inställningar → Källor och ändra till din riktiga IPTV-server');
+        return;
+      }
+
       // Check if proxied FIRST to determine URL type correctly
       const isProxied = isProxiedUrl(effectiveSrc);
       
@@ -325,7 +346,7 @@ export function ShakaPlayer({
       console.log('[ShakaPlayer] Shaka Player version:', shaka.Player.version);
       console.log('[ShakaPlayer] ─────────────────────────────');
     }
-  }, [effectiveSrc]);
+  }, [effectiveSrc, isConfigError]);
 
   // Configure and initialize Shaka Player
   const initPlayer = useCallback(async () => {
@@ -814,6 +835,12 @@ export function ShakaPlayer({
               <CollapsibleContent className="mt-2">
                 {diagnostics && (
                   <div className="rounded border border-border bg-muted/30 p-3 font-mono text-xs space-y-1">
+                    {/* Config error warning */}
+                    {isConfigError && (
+                      <p className="text-destructive font-semibold mb-2">
+                        ⚠️ Konfigurationsfel: Ändra server_url i Inställningar → Källor till din riktiga IPTV-server (inte proxy-domänen)
+                      </p>
+                    )}
                     <p>
                       <strong>Proxy Route:</strong>{' '}
                       <span className={isUsingCustomProxy() ? 'text-green-500' : 'text-muted-foreground'}>
