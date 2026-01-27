@@ -275,23 +275,33 @@ export function ShakaPlayer({
   // Analyze stream URL and set diagnostics
   useEffect(() => {
     if (effectiveSrc) {
-      const urlType = effectiveSrc.includes('.m3u8') ? 'HLS (.m3u8)'
-        : effectiveSrc.includes('.ts') ? 'MPEG-TS (.ts)'
-        : effectiveSrc.includes('.mp4') ? 'MP4'
-        : effectiveSrc.includes('.mkv') ? 'MKV'
-        : 'Okänd';
-
+      // Check if proxied FIRST to determine URL type correctly
       const isProxied = isProxiedUrl(effectiveSrc);
-      const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
-      const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
-
+      
+      // For proxied URLs, extract the original to analyze
       let displayUrl = effectiveSrc;
       if (isProxied) {
         const extracted = extractOriginalFromProxy(effectiveSrc);
         if (extracted) displayUrl = extracted;
       }
 
+      // Determine URL type from the proxied URL content (after ?url= decode)
+      const urlType = displayUrl.includes('.m3u8') ? 'HLS (.m3u8)'
+        : displayUrl.includes('.ts') ? 'MPEG-TS (.ts)'
+        : displayUrl.includes('.mp4') ? 'MP4'
+        : displayUrl.includes('.mkv') ? 'MKV'
+        : 'Okänd';
+
+      // Protocol of the actual request (effectiveSrc) - this is what matters for Mixed Content
+      const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
+      const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
+
       const tsFormat = isTsStream(displayUrl);
+      
+      // Detect Mixed Content issue
+      const hasMixedContent = !isProxied && 
+        effectiveSrc.startsWith('http://') && 
+        pageProtocol === 'https:';
 
       setDiagnostics({
         streamUrl: displayUrl,
@@ -303,9 +313,17 @@ export function ShakaPlayer({
         shakaVersion: shaka.Player.version,
       });
 
-      console.log('[ShakaPlayer] Original URL:', displayUrl);
+      // Enhanced logging for debugging
+      console.log('[ShakaPlayer] ─────────────────────────────');
       console.log('[ShakaPlayer] Effective URL:', effectiveSrc);
+      console.log('[ShakaPlayer] Original URL:', displayUrl);
+      console.log('[ShakaPlayer] Is Proxied:', isProxied ? '✅ Ja' : '❌ Nej');
+      console.log('[ShakaPlayer] Protocol:', `Sida: ${pageProtocol} / Ström: ${protocol}`);
+      if (hasMixedContent) {
+        console.warn('[ShakaPlayer] ⚠️ Mixed Content detected! HTTP stream on HTTPS page without proxy.');
+      }
       console.log('[ShakaPlayer] Shaka Player version:', shaka.Player.version);
+      console.log('[ShakaPlayer] ─────────────────────────────');
     }
   }, [effectiveSrc]);
 
@@ -809,13 +827,18 @@ export function ShakaPlayer({
                     <p>
                       <strong>Proxy:</strong>{' '}
                       <span className={diagnostics.isProxied ? 'text-green-500' : 'text-yellow-500'}>
-                        {diagnostics.isProxied ? 'Ja ✓' : 'Nej ⚠️'}
+                        {diagnostics.isProxied ? 'Ja ✅' : 'Nej ⚠️'}
                       </span>
-                      {!diagnostics.isProxied && diagnostics.streamUrl.includes('line.premiumvinted.se') && (
-                        <span className="ml-2 text-red-500">(Fel URL-format!)</span>
+                      {!diagnostics.isProxied && diagnostics.protocol === 'http' && diagnostics.pageProtocol === 'https:' && (
+                        <span className="ml-2 text-red-500">(Mixed Content-risk!)</span>
                       )}
                     </p>
-                    <p><strong>Protokoll:</strong> Sida: {diagnostics.pageProtocol} / Ström: {diagnostics.protocol}</p>
+                    <p>
+                      <strong>Protokoll:</strong> Sida: {diagnostics.pageProtocol} / Ström: {diagnostics.protocol}
+                      {diagnostics.isProxied && diagnostics.protocol === 'https' && (
+                        <span className="ml-2 text-green-500">✓ Säker</span>
+                      )}
+                    </p>
                     {diagnostics.lastError && (
                       <p><strong>Senaste fel:</strong> {diagnostics.lastError}</p>
                     )}

@@ -90,13 +90,20 @@ export function hasMixedContentIssue(url: string): boolean {
 
 /**
  * Check if URL is already proxied through our Edge Function
- * Returns true if URL contains the proxy endpoint path OR the custom Cloudflare domain
+ * Returns true ONLY if URL has the correct proxy format with ?url= parameter
  */
 export function isProxiedUrl(url: string): boolean {
-  // Import here to avoid circular dependency
+  const hasProxyPath = url.includes('/functions/v1/stream-proxy');
+  const hasUrlParam = url.includes('?url=');
+  
+  // Must have BOTH the proxy path AND the url parameter to be correctly proxied
+  if (hasProxyPath && hasUrlParam) return true;
+  
+  // Custom domain with url parameter is also valid
   const customDomain = 'line.premiumvinted.se';
-  return url.includes('/functions/v1/stream-proxy') || 
-         (url.includes(customDomain) && url.includes('?url='));
+  if (url.includes(customDomain) && hasUrlParam) return true;
+  
+  return false;
 }
 
 /**
