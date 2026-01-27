@@ -183,15 +183,37 @@ function shouldUseProxy(url: string): boolean {
 }
 
 // Wrap URL through stream proxy using custom Cloudflare domain
-import { getProxyBaseUrl } from './proxy-config';
+import { getProxyBaseUrl, CUSTOM_PROXY_DOMAIN } from './proxy-config';
 
+/**
+ * Check if a URL is already proxied through our Edge Function
+ * Returns true if URL contains the proxy endpoint path OR the custom domain
+ */
+export function isProxiedUrl(url: string): boolean {
+  return url.includes('/functions/v1/stream-proxy') || 
+         (CUSTOM_PROXY_DOMAIN && url.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname));
+}
+
+/**
+ * Wrap URL through stream proxy
+ * IMPORTANT: The original URL must be passed as a query parameter, not embedded in the path
+ */
 function proxyStreamUrl(url: string): string {
+  // Don't double-proxy
+  if (isProxiedUrl(url)) {
+    console.log('[XtreamAPI] URL already proxied, skipping:', url.substring(0, 60) + '...');
+    return url;
+  }
+  
   const proxyBase = getProxyBaseUrl();
   if (!proxyBase) {
     console.warn('[XtreamAPI] No proxy URL configured, cannot use stream proxy');
     return url;
   }
-  return `${proxyBase}?url=${encodeURIComponent(url)}`;
+  
+  const proxiedUrl = `${proxyBase}?url=${encodeURIComponent(url)}`;
+  console.log('[XtreamAPI] Proxying URL:', url.substring(0, 50) + '... → ', proxiedUrl.substring(0, 80) + '...');
+  return proxiedUrl;
 }
 
 // Build stream URL for live channels
@@ -203,28 +225,39 @@ export function buildLiveStreamUrl(
   const { useProxy = true, preferTs = true, forceHttp = false } = options;
   let base = buildBaseUrl(creds);
   
+  // CRITICAL: If the server URL is already our proxy domain, we need to handle it specially
+  // The user may have set server_url to the Cloudflare domain by mistake
+  const isServerAlreadyProxy = CUSTOM_PROXY_DOMAIN && base.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname);
+  
   // Force HTTP protocol if requested (many IPTV providers don't support HTTPS for live)
-  if (forceHttp && base.startsWith('https://')) {
+  if (forceHttp && base.startsWith('https://') && !isServerAlreadyProxy) {
     base = base.replace('https://', 'http://');
     console.log('[XtreamAPI] Forced HTTP for live stream:', base.substring(0, 40) + '...');
   }
   
-  const directM3u8Url = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.m3u8`;
-  const directTsUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.ts`;
+  const extension = preferTs ? 'ts' : 'm3u8';
+  const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
-  // If we're on an HTTPS page and the stream is HTTP, we must proxy.
-  // Many IPTV providers block proxied HLS playlists (.m3u8) but allow direct TS streams (.ts).
-  if (useProxy && shouldUseProxy(directM3u8Url)) {
-    if (preferTs) {
-      console.log('[XtreamAPI] Using stream proxy (ts) for:', directTsUrl.substring(0, 60) + '...');
-      return proxyStreamUrl(directTsUrl);
-    } else {
-      console.log('[XtreamAPI] Using stream proxy (m3u8) for:', directM3u8Url.substring(0, 60) + '...');
-      return proxyStreamUrl(directM3u8Url);
+  // If server_url is already our proxy domain, the URL is incorrectly constructed
+  // This happens when user sets server_url to Cloudflare domain instead of real IPTV server
+  if (isServerAlreadyProxy) {
+    console.warn('[XtreamAPI] server_url is set to proxy domain! This is incorrect configuration.');
+    console.warn('[XtreamAPI] URL will fail because Cloudflare domain does not serve /live/ paths directly.');
+    // Return as-is, let it fail so user sees the issue
+    return directUrl;
+  }
+  
+  // If we're on an HTTPS page and the stream is HTTP, we must proxy
+  // Also proxy if useProxy is enabled (even for HTTPS streams, to go through Cloudflare)
+  if (useProxy) {
+    // Check if we need proxy for mixed content OR user explicitly wants proxy
+    if (shouldUseProxy(directUrl) || useProxy) {
+      console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 60) + '...');
+      return proxyStreamUrl(directUrl);
     }
   }
   
-  return directM3u8Url;
+  return directUrl;
 }
 
 // Build stream URL for movies

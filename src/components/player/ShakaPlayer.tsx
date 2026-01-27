@@ -806,7 +806,15 @@ export function ShakaPlayer({
                     <p><strong>Shaka:</strong> v{diagnostics.shakaVersion}</p>
                     <p><strong>URL:</strong> <span className="break-all">{diagnostics.streamUrl}</span></p>
                     <p><strong>Typ:</strong> {diagnostics.urlType}</p>
-                    <p><strong>Proxy:</strong> {diagnostics.isProxied ? 'Ja' : 'Nej'}</p>
+                    <p>
+                      <strong>Proxy:</strong>{' '}
+                      <span className={diagnostics.isProxied ? 'text-green-500' : 'text-yellow-500'}>
+                        {diagnostics.isProxied ? 'Ja ✓' : 'Nej ⚠️'}
+                      </span>
+                      {!diagnostics.isProxied && diagnostics.streamUrl.includes('line.premiumvinted.se') && (
+                        <span className="ml-2 text-red-500">(Fel URL-format!)</span>
+                      )}
+                    </p>
                     <p><strong>Protokoll:</strong> Sida: {diagnostics.pageProtocol} / Ström: {diagnostics.protocol}</p>
                     {diagnostics.lastError && (
                       <p><strong>Senaste fel:</strong> {diagnostics.lastError}</p>
