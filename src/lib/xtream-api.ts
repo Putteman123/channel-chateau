@@ -197,8 +197,10 @@ export function isProxiedUrl(url: string): boolean {
 /**
  * Wrap URL through stream proxy
  * IMPORTANT: The original URL must be passed as a query parameter, not embedded in the path
+ * @param url - The original stream URL
+ * @param options.preferM3u8 - If true, convert .ts to .m3u8 for better browser compatibility (default: true)
  */
-function proxyStreamUrl(url: string): string {
+function proxyStreamUrl(url: string, options?: { preferM3u8?: boolean }): string {
   // Don't double-proxy
   if (isProxiedUrl(url)) {
     console.log('[XtreamAPI] URL already proxied, skipping:', url.substring(0, 60) + '...');
@@ -211,8 +213,16 @@ function proxyStreamUrl(url: string): string {
     return url;
   }
   
-  const proxiedUrl = `${proxyBase}?url=${encodeURIComponent(url)}`;
-  console.log('[XtreamAPI] Proxying URL:', url.substring(0, 50) + '... → ', proxiedUrl.substring(0, 80) + '...');
+  // Convert .ts to .m3u8 for better browser compatibility (unless explicitly disabled)
+  let urlToProxy = url;
+  if (options?.preferM3u8 !== false && url.endsWith('.ts')) {
+    urlToProxy = url.replace('.ts', '.m3u8');
+    console.log('[XtreamAPI] Converting .ts → .m3u8:', urlToProxy);
+  }
+  
+  const proxiedUrl = `${proxyBase}?url=${encodeURIComponent(urlToProxy)}`;
+  console.log('[XtreamAPI] Original:', url);
+  console.log('[XtreamAPI] Final Proxy URL:', proxiedUrl);
   return proxiedUrl;
 }
 
@@ -225,36 +235,28 @@ export function buildLiveStreamUrl(
   const { useProxy = true, preferTs = true, forceHttp = false } = options;
   let base = buildBaseUrl(creds);
   
-  // CRITICAL: If the server URL is already our proxy domain, we need to handle it specially
-  // The user may have set server_url to the Cloudflare domain by mistake
+  // CRITICAL: Detect if server_url is incorrectly set to our proxy domain
   const isServerAlreadyProxy = CUSTOM_PROXY_DOMAIN && base.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname);
+  if (isServerAlreadyProxy) {
+    console.error('[XtreamAPI] ❌ server_url är felaktigt inställd till proxy-domänen!');
+    console.error('[XtreamAPI] Ändra server_url till din riktiga IPTV-server i Inställningar → Källor');
+    return ''; // Return empty to prevent broken URL construction
+  }
   
   // Force HTTP protocol if requested (many IPTV providers don't support HTTPS for live)
-  if (forceHttp && base.startsWith('https://') && !isServerAlreadyProxy) {
+  if (forceHttp && base.startsWith('https://')) {
     base = base.replace('https://', 'http://');
     console.log('[XtreamAPI] Forced HTTP for live stream:', base.substring(0, 40) + '...');
   }
   
+  // Always build with .ts extension from the IPTV server (will be converted to .m3u8 by proxy)
   const extension = preferTs ? 'ts' : 'm3u8';
   const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
-  // If server_url is already our proxy domain, the URL is incorrectly constructed
-  // This happens when user sets server_url to Cloudflare domain instead of real IPTV server
-  if (isServerAlreadyProxy) {
-    console.warn('[XtreamAPI] server_url is set to proxy domain! This is incorrect configuration.');
-    console.warn('[XtreamAPI] URL will fail because Cloudflare domain does not serve /live/ paths directly.');
-    // Return as-is, let it fail so user sees the issue
-    return directUrl;
-  }
-  
-  // If we're on an HTTPS page and the stream is HTTP, we must proxy
-  // Also proxy if useProxy is enabled (even for HTTPS streams, to go through Cloudflare)
+  // ALWAYS use proxy if enabled - this handles Mixed Content, CORS, and .ts→.m3u8 conversion
   if (useProxy) {
-    // Check if we need proxy for mixed content OR user explicitly wants proxy
-    if (shouldUseProxy(directUrl) || useProxy) {
-      console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 60) + '...');
-      return proxyStreamUrl(directUrl);
-    }
+    console.log('[XtreamAPI] Using stream proxy for:', directUrl.substring(0, 60) + '...');
+    return proxyStreamUrl(directUrl, { preferM3u8: true });
   }
   
   return directUrl;
