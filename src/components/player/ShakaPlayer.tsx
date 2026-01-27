@@ -872,6 +872,22 @@ export function ShakaPlayer({
                     {diagnostics.lastHttpStatus && (
                       <p><strong>HTTP-status:</strong> {diagnostics.lastHttpStatus}</p>
                     )}
+                    {/* Test proxy download link */}
+                    {diagnostics.isProxied && effectiveSrc && (
+                      <p className="mt-2">
+                        <a 
+                          href={effectiveSrc}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary underline hover:no-underline"
+                        >
+                          🔗 Testa Proxy-nedladdning
+                        </a>
+                        <span className="ml-2 text-muted-foreground text-xs">
+                          (Öppnas i ny flik - bör ladda ner textfil)
+                        </span>
+                      </p>
+                    )}
                   </div>
                 )}
               </CollapsibleContent>

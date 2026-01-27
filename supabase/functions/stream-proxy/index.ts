@@ -73,8 +73,9 @@ serve(async (req) => {
     }
 
     // Build fetch headers - use custom values if provided, otherwise defaults
+    // Use "IPTV Smarters Pro" as default - widely accepted by IPTV providers
     const fetchHeaders: Record<string, string> = {
-      "User-Agent": customUserAgent || "VLC/3.0.20 LibVLC/3.0.20",
+      "User-Agent": customUserAgent || "IPTV Smarters Pro/3.0.9",
       "Accept": "*/*",
       "Accept-Language": "en-US,en;q=0.9",
       "Connection": "keep-alive",
@@ -266,10 +267,18 @@ serve(async (req) => {
     const isImage = contentType.includes('image') || 
                     decodedUrl.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i);
 
+    // Ensure correct Content-Type for video segments
+    let finalContentType = contentType;
+    if (decodedUrl.endsWith('.ts') || decodedUrl.includes('.ts?')) {
+      finalContentType = 'video/mp2t';
+    } else if (decodedUrl.includes('.m3u8')) {
+      finalContentType = 'application/vnd.apple.mpegurl';
+    }
+
     // Build response headers
     const responseHeaders: Record<string, string> = {
       ...corsHeaders,
-      "Content-Type": contentType,
+      "Content-Type": finalContentType,
       // Use longer cache for images (24h), shorter for streams (5min)
       "Cache-Control": isImage ? "max-age=86400, public" : "max-age=300",
     };
