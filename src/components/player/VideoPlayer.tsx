@@ -15,13 +15,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { 
-  getProxyUrl, 
-  isProxiedUrl, 
-  extractOriginalUrl as extractOriginalFromProxy,
   buildExternalPlayerUrl,
   isTsStream,
   hasMixedContentIssue,
 } from '@/lib/stream-utils';
+import { isCloudflareUrl } from '@/lib/cloudflare-rewrite';
 
 /** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
 export interface StreamHttpHeaders {
@@ -135,8 +133,7 @@ function diagnoseError(src: string, errorCode?: number, errorMessage?: string): 
   };
 }
 
-// Re-export from stream-utils for backwards compatibility
-const extractOriginalUrl = extractOriginalFromProxy;
+// Removed: old extractOriginalFromProxy - now using direct Cloudflare URLs
 
 export function VideoPlayer({
   src,
@@ -206,19 +203,12 @@ export function VideoPlayer({
         : effectiveSrc.includes('.mkv') ? 'MKV'
         : 'Okänd';
       
-      const isProxied = isProxiedUrl(effectiveSrc);
+      const isProxied = isCloudflareUrl(effectiveSrc);
       const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
       const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
       
-      // Extract original URL if proxied
-      let displayUrl = effectiveSrc;
-      if (isProxied) {
-        const extracted = extractOriginalUrl(effectiveSrc);
-        if (extracted) {
-          displayUrl = extracted;
-        }
-      }
-      
+      // Display URL is the same as effective (no ?url= param to extract)
+      const displayUrl = effectiveSrc;
       // Check if it's a TS format stream
       const tsFormat = isTsStream(displayUrl);
       
@@ -540,10 +530,7 @@ export function VideoPlayer({
   // Get external URL for external players
   const externalUrl = useMemo(() => {
     if (originalStreamUrl) return originalStreamUrl;
-    if (isProxiedUrl(effectiveSrc)) {
-      const extracted = extractOriginalFromProxy(effectiveSrc);
-      if (extracted) return extracted;
-    }
+    // For Cloudflare URLs, the URL is already direct (no ?url= param to extract)
     return effectiveSrc;
   }, [effectiveSrc, originalStreamUrl]);
 
@@ -650,7 +637,7 @@ export function VideoPlayer({
               {/* Test Link Button */}
               <div className="border-t border-white/10 pt-2 flex flex-wrap gap-2">
                 <a
-                  href={originalStreamUrl || diagnostics?.streamUrl || extractOriginalUrl(src) || src}
+                  href={originalStreamUrl || diagnostics?.streamUrl || src}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 rounded text-blue-300 transition-colors"
@@ -663,7 +650,7 @@ export function VideoPlayer({
                   variant="ghost"
                   className="h-auto py-1.5 px-3 text-xs"
                   onClick={() => {
-                    const url = originalStreamUrl || diagnostics?.streamUrl || extractOriginalUrl(src) || src;
+                    const url = originalStreamUrl || diagnostics?.streamUrl || src;
                     navigator.clipboard.writeText(url);
                   }}
                 >
@@ -702,7 +689,7 @@ export function VideoPlayer({
                 <DropdownMenuContent>
                   <DropdownMenuItem
                     onClick={() => {
-                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      const url = originalStreamUrl || src;
                       window.open(buildExternalPlayerUrl(url, 'vlc'), '_blank');
                     }}
                   >
@@ -710,7 +697,7 @@ export function VideoPlayer({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
-                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      const url = originalStreamUrl || src;
                       window.open(buildExternalPlayerUrl(url, 'mpv'), '_blank');
                     }}
                   >
@@ -718,7 +705,7 @@ export function VideoPlayer({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
-                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      const url = originalStreamUrl || src;
                       window.open(buildExternalPlayerUrl(url, 'iina'), '_blank');
                     }}
                   >
@@ -726,7 +713,7 @@ export function VideoPlayer({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
-                      const url = originalStreamUrl || extractOriginalUrl(src) || src;
+                      const url = originalStreamUrl || src;
                       navigator.clipboard.writeText(url);
                     }}
                   >
