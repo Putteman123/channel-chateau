@@ -17,16 +17,130 @@ const corsHeaders = {
  * - Handles streams WITHOUT file extensions (assumes MPEG-TS by default)
  * - Does NOT convert .ts to .m3u8 - sends exact URL as-is
  * - Uses VLC User-Agent for IPTV provider compatibility
+ * - CACHES redirect URLs to avoid repeated requests to provider
+ * - RETRIES with exponential backoff on 458/rate-limiting errors
  * 
  * Usage:
  * GET /stream-proxy?url=<encoded-stream-url>
  * POST /stream-proxy { url: "<stream-url>" }
  */
 
+// ========================================
+// REDIRECT URL CACHE (in-memory, 5 min TTL)
+// ========================================
+interface CachedRedirect {
+  finalUrl: string;
+  timestamp: number;
+}
+
+const redirectCache = new Map<string, CachedRedirect>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedRedirect(originalUrl: string): string | null {
+  const cached = redirectCache.get(originalUrl);
+  if (!cached) return null;
+  
+  // Check if cache is still valid
+  if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
+    redirectCache.delete(originalUrl);
+    return null;
+  }
+  
+  console.log(`[stream-proxy] ♻️ Using cached redirect: ${redactUrl(cached.finalUrl).substring(0, 80)}...`);
+  return cached.finalUrl;
+}
+
+function setCachedRedirect(originalUrl: string, finalUrl: string): void {
+  // Only cache if there was an actual redirect
+  if (originalUrl !== finalUrl) {
+    redirectCache.set(originalUrl, {
+      finalUrl,
+      timestamp: Date.now(),
+    });
+    console.log(`[stream-proxy] 📦 Cached redirect: ${redirectCache.size} entries`);
+    
+    // Clean up old entries periodically (max 1000 entries)
+    if (redirectCache.size > 1000) {
+      const now = Date.now();
+      for (const [key, value] of redirectCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL_MS) {
+          redirectCache.delete(key);
+        }
+      }
+    }
+  }
+}
+
 // Redact sensitive info from URLs for logging
 function redactUrl(url: string): string {
   return url.replace(/password=[^&]+/gi, 'password=***')
             .replace(/username=[^&]+/gi, 'username=***');
+}
+
+// ========================================
+// EXPONENTIAL BACKOFF RETRY (for 458 errors)
+// ========================================
+async function fetchWithRetry(
+  url: string, 
+  headers: Record<string, string>,
+  maxRetries = 3,
+  baseDelayMs = 500
+): Promise<{ response: Response | null; finalUrl: string; error: Error | null }> {
+  let lastError: Error | null = null;
+  let response: Response | null = null;
+  let finalUrl = url;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[stream-proxy] Attempt ${attempt}/${maxRetries}: ${redactUrl(url).substring(0, 80)}...`);
+      
+      response = await fetch(url, {
+        headers,
+        redirect: "follow",
+      });
+      
+      // Track final URL after redirects
+      if (response.url !== url) {
+        finalUrl = response.url;
+        console.log(`[stream-proxy] ✅ Redirect to: ${redactUrl(finalUrl).substring(0, 80)}...`);
+      }
+      
+      // Success - return immediately
+      if (response.ok || response.status === 206) {
+        return { response, finalUrl, error: null };
+      }
+      
+      // Rate limiting (458) or server overload - retry with backoff
+      if (response.status === 458 || response.status === 429 || response.status === 503) {
+        const delayMs = baseDelayMs * Math.pow(2, attempt - 1); // Exponential backoff
+        console.log(`[stream-proxy] ⏳ Rate limited (HTTP ${response.status}), waiting ${delayMs}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        lastError = new Error(`HTTP ${response.status}`);
+        (lastError as any).httpStatus = response.status;
+        response = null;
+        continue;
+      }
+      
+      // Other error - don't retry
+      lastError = new Error(`HTTP ${response.status}`);
+      (lastError as any).httpStatus = response.status;
+      return { response: null, finalUrl, error: lastError };
+      
+    } catch (err) {
+      console.error(`[stream-proxy] Attempt ${attempt} failed:`, err);
+      lastError = err instanceof Error ? err : new Error(String(err));
+      response = null;
+      
+      // Network errors - retry with backoff
+      const delayMs = baseDelayMs * Math.pow(2, attempt - 1);
+      if (attempt < maxRetries) {
+        console.log(`[stream-proxy] ⏳ Network error, waiting ${delayMs}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  
+  return { response, finalUrl, error: lastError };
 }
 
 serve(async (req) => {
@@ -70,10 +184,16 @@ serve(async (req) => {
       console.log(`[stream-proxy] Custom headers: UA=${customUserAgent ? 'yes' : 'no'}, Referer=${customReferer ? 'yes' : 'no'}`);
     }
 
+    // ========================================
+    // CHECK REDIRECT CACHE FIRST
+    // ========================================
+    const cachedFinalUrl = getCachedRedirect(decodedUrl);
+    const urlToFetch = cachedFinalUrl || decodedUrl;
+
     // Extract origin from stream URL for Referer/Origin headers (fallback)
     let streamOrigin = "";
     try {
-      streamOrigin = new URL(decodedUrl).origin;
+      streamOrigin = new URL(urlToFetch).origin;
     } catch {
       // Invalid URL, skip origin headers
     }
@@ -109,69 +229,48 @@ serve(async (req) => {
     }
 
     // Build URL list to try - prioritize HTTP for live streams (IPTV providers often block HTTPS)
-    const isLiveStream = decodedUrl.includes('/live/') || decodedUrl.endsWith('.ts');
+    const isLiveStream = urlToFetch.includes('/live/') || urlToFetch.endsWith('.ts');
     const urlsToTry: string[] = [];
     
-    if (decodedUrl.startsWith("https://")) {
+    // If we have a cached URL, only try that (no protocol fallback needed)
+    if (cachedFinalUrl) {
+      urlsToTry.push(cachedFinalUrl);
+    } else if (urlToFetch.startsWith("https://")) {
       if (isLiveStream) {
-        urlsToTry.push(decodedUrl.replace("https://", "http://"));
-        urlsToTry.push(decodedUrl);
+        urlsToTry.push(urlToFetch.replace("https://", "http://"));
+        urlsToTry.push(urlToFetch);
       } else {
-        urlsToTry.push(decodedUrl);
-        urlsToTry.push(decodedUrl.replace("https://", "http://"));
+        urlsToTry.push(urlToFetch);
+        urlsToTry.push(urlToFetch.replace("https://", "http://"));
       }
-    } else if (decodedUrl.startsWith("http://")) {
-      urlsToTry.push(decodedUrl);
+    } else if (urlToFetch.startsWith("http://")) {
+      urlsToTry.push(urlToFetch);
       if (!isLiveStream) {
-        urlsToTry.push(decodedUrl.replace("http://", "https://"));
+        urlsToTry.push(urlToFetch.replace("http://", "https://"));
       }
     } else {
-      urlsToTry.push(decodedUrl);
+      urlsToTry.push(urlToFetch);
     }
 
     let response: Response | null = null;
     let lastError: Error | null = null;
-    let finalUrl: string = decodedUrl;
-    let redirectChain: string[] = [];
+    let finalUrl: string = urlToFetch;
 
-    for (const urlToTry of urlsToTry) {
-      try {
-        console.log(`[stream-proxy] Trying: ${redactUrl(urlToTry).substring(0, 80)}...`);
-        redirectChain = [urlToTry];
+    for (const urlAttempt of urlsToTry) {
+      // Use retry with exponential backoff
+      const result = await fetchWithRetry(urlAttempt, fetchHeaders, 3, 500);
+      
+      if (result.response && (result.response.ok || result.response.status === 206)) {
+        response = result.response;
+        finalUrl = result.finalUrl;
         
-        // CRITICAL: redirect: 'follow' makes the proxy follow redirects INTERNALLY
-        // The client never sees the 302 - we handle it server-side (Man-in-the-Middle)
-        response = await fetch(urlToTry, {
-          headers: fetchHeaders,
-          redirect: "follow", // Follow redirects internally - never send to client!
-        });
-
-        // Log the final URL after redirects - this is KEY for debugging
-        if (response.url !== urlToTry) {
-          redirectChain.push(response.url);
-          console.log(`[stream-proxy] ✅ Redirect chain: ${redirectChain.length} hops`);
-          console.log(`[stream-proxy] Final URL after redirect: ${redactUrl(response.url).substring(0, 100)}...`);
-          finalUrl = response.url;
-        } else {
-          console.log(`[stream-proxy] No redirect, using original URL`);
-        }
-
-        // Accept 200 OK and 206 Partial Content (for Range requests)
-        if (response.ok || response.status === 206) {
-          console.log(`[stream-proxy] ✅ Success (HTTP ${response.status}) from: ${redactUrl(finalUrl).substring(0, 80)}...`);
-          break;
-        } else {
-          const statusCode = response.status;
-          console.error(`[stream-proxy] ❌ HTTP ${statusCode} from: ${redactUrl(urlToTry).substring(0, 80)}...`);
-          lastError = new Error(`HTTP ${statusCode}`);
-          (lastError as any).httpStatus = statusCode;
-          response = null;
-        }
-      } catch (err) {
-        console.error(`[stream-proxy] ❌ Connection failed: ${err}`);
-        lastError = err instanceof Error ? err : new Error(String(err));
-        response = null;
+        // Cache the successful redirect for future requests
+        setCachedRedirect(decodedUrl, finalUrl);
+        break;
       }
+      
+      lastError = result.error;
+      if (result.finalUrl) finalUrl = result.finalUrl;
     }
 
     if (!response || (!response.ok && response.status !== 206)) {
@@ -191,6 +290,10 @@ serve(async (req) => {
         responseStatus = 458;
         errorType = "Provider blocking";
         hint = "HTTP 458 - leverantören blockerar datacenter-IP. Öppna strömmen i VLC/MPV.";
+      } else if (actualHttpStatus === 429) {
+        responseStatus = 429;
+        errorType = "Rate limited";
+        hint = "För många förfrågningar. Vänta en stund och försök igen.";
       } else if (actualHttpStatus === 403) {
         responseStatus = 403;
         errorType = "Access denied";
