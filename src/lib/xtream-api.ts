@@ -176,34 +176,42 @@ export function buildApiUrl(creds: XtreamCredentials, action?: string): string {
   return url;
 }
 
-// Import the new Cloudflare rewrite utility
-import { transformStreamUrl, isCloudflareUrl } from './cloudflare-rewrite';
+// Import the Cloudflare Direct Tunnel utility (IPTV Smarters method)
+import { convertToTunnel, isCloudflareUrl, getConnectionDisplayName } from './cloudflare-rewrite';
 
 /**
- * Check if a URL is already using our proxy
+ * Check if a URL is already using our Cloudflare tunnel
  */
 export function isProxiedUrl(url: string): boolean {
   return isCloudflareUrl(url);
 }
 
 /**
- * Transform URL to use proxy (handles redirects internally, MITM mode)
- * NOTE: No longer does .ts → .m3u8 conversion - proxy handles everything
+ * Get connection type display name for debug UI
+ */
+export { getConnectionDisplayName };
+
+/**
+ * Transform URL to use Cloudflare Direct Tunnel
+ * This is FASTER than Supabase proxy - uses Cloudflare's edge network
+ * 
+ * The tunnel:
+ * - Converts HTTP → HTTPS (bypasses Mixed Content)
+ * - Converts .ts → .m3u8 (browser compatibility)
+ * - Routes through Cloudflare's global network (low latency)
  * 
  * @param url - The original stream URL
  */
-function proxyStreamUrl(url: string): string {
+function tunnelStreamUrl(url: string): string {
   // Don't double-transform
   if (isCloudflareUrl(url)) {
-    console.log('[XtreamAPI] URL already proxied, skipping:', url.substring(0, 60) + '...');
+    console.log('[XtreamAPI] URL already tunneled, skipping');
     return url;
   }
   
-  // Transform through proxy - sends exact URL, no format changes
-  const transformed = transformStreamUrl(url);
-  console.log('[XtreamAPI] Original:', url);
-  console.log('[XtreamAPI] Proxied:', transformed.substring(0, 80) + '...');
-  return transformed;
+  // Transform through Cloudflare tunnel
+  const tunneled = convertToTunnel(url, { convertTs: true });
+  return tunneled;
 }
 
 /**
@@ -246,7 +254,7 @@ export function buildLiveStreamUrl(
     console.log('[XtreamAPI] Using Player API format:', playerApiUrl.substring(0, 60) + '...');
     
     if (useProxy) {
-      return proxyStreamUrl(playerApiUrl);
+      return tunnelStreamUrl(playerApiUrl);
     }
     return playerApiUrl;
   }
@@ -257,15 +265,16 @@ export function buildLiveStreamUrl(
     console.log('[XtreamAPI] Forced HTTP for live stream');
   }
   
-  // Build stream URL with chosen extension (standard Xtream format)
-  // The proxy will follow any 302 redirects to the final IP/token URL
+  // Build stream URL with extension
+  // Always use .ts - the tunnel will convert to .m3u8 for browser compatibility
   const extension = preferTs ? 'ts' : 'm3u8';
   const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
-  // Use proxy (MITM mode) - critical for Mixed Content and redirect handling
+  // Use Cloudflare Direct Tunnel (IPTV Smarters method)
+  // This is faster than Supabase proxy - uses Cloudflare's edge network
   if (useProxy) {
-    console.log('[XtreamAPI] Using standard Xtream format + MITM proxy:', directUrl.substring(0, 60) + '...');
-    return proxyStreamUrl(directUrl);
+    console.log('[XtreamAPI] Using Cloudflare Direct Tunnel:', directUrl.substring(0, 60) + '...');
+    return tunnelStreamUrl(directUrl);
   }
   
   return directUrl;
@@ -281,15 +290,15 @@ export function buildMovieStreamUrl(
   const base = buildBaseUrl(creds);
   const directUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
-  // For VOD, use proxy if explicitly enabled - handles CORS and buffering
+  // Use Cloudflare Direct Tunnel for VOD content
   if (useProxy) {
     if (preferTs) {
       const tsUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.ts`;
-      console.log('[XtreamAPI] Using stream proxy (ts) for movie:', tsUrl.substring(0, 50) + '...');
-      return proxyStreamUrl(tsUrl);
+      console.log('[XtreamAPI] Using Cloudflare tunnel (ts) for movie');
+      return tunnelStreamUrl(tsUrl);
     }
-    console.log('[XtreamAPI] Using stream proxy for movie:', directUrl.substring(0, 50) + '...');
-    return proxyStreamUrl(directUrl);
+    console.log('[XtreamAPI] Using Cloudflare tunnel for movie');
+    return tunnelStreamUrl(directUrl);
   }
   
   return directUrl;
@@ -305,15 +314,15 @@ export function buildSeriesStreamUrl(
   const base = buildBaseUrl(creds);
   const directUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.${extension}`;
   
-  // For VOD, use proxy if explicitly enabled - handles CORS and buffering
+  // Use Cloudflare Direct Tunnel for series content
   if (useProxy) {
     if (preferTs) {
       const tsUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.ts`;
-      console.log('[XtreamAPI] Using stream proxy (ts) for series:', tsUrl.substring(0, 50) + '...');
-      return proxyStreamUrl(tsUrl);
+      console.log('[XtreamAPI] Using Cloudflare tunnel (ts) for series');
+      return tunnelStreamUrl(tsUrl);
     }
-    console.log('[XtreamAPI] Using stream proxy for series:', directUrl.substring(0, 50) + '...');
-    return proxyStreamUrl(directUrl);
+    console.log('[XtreamAPI] Using Cloudflare tunnel for series');
+    return tunnelStreamUrl(directUrl);
   }
   
   return directUrl;

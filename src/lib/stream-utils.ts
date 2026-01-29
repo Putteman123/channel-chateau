@@ -43,41 +43,44 @@ export function convertTsToM3u8(url: string): string {
 }
 
 /**
- * Generate a proxy URL for the stream
- * This routes the stream through our Supabase Edge Function to handle CORS/Mixed Content
+ * Generate a proxy URL for the stream (LEGACY)
+ * NOTE: The new architecture uses Cloudflare Direct Tunnel instead.
+ * This function is kept for backwards compatibility.
+ * 
+ * @see cloudflare-rewrite.ts for the new Direct Tunnel implementation
  */
 export function getProxyUrl(originalUrl: string, options: ProxyOptions = {}): string {
-  const proxyBase = getProxyBaseUrl();
-  if (!proxyBase) {
-    console.warn('[stream-utils] No proxy URL configured, cannot proxy');
-    return originalUrl;
+  // Import the new tunnel function
+  const CLOUDFLARE_VPN = 'https://vpn.premiumvinted.se';
+  
+  // Extract path from original URL
+  try {
+    const urlObj = new URL(originalUrl);
+    let path = urlObj.pathname + urlObj.search;
+    
+    // Convert .ts to .m3u8 if requested (default for browser playback)
+    if (options.preferM3u8) {
+      path = path.replace(/\.ts(\?|$)/, '.m3u8$1');
+    }
+    
+    const tunneledUrl = `${CLOUDFLARE_VPN}${path}`;
+    console.log('[stream-utils] Using Cloudflare tunnel:', tunneledUrl.substring(0, 60) + '...');
+    return tunneledUrl;
+  } catch {
+    // Fallback to edge function if URL parsing fails
+    const proxyBase = getProxyBaseUrl();
+    if (!proxyBase) {
+      console.warn('[stream-utils] No proxy URL configured, returning original');
+      return originalUrl;
+    }
+    
+    const params = new URLSearchParams();
+    params.set('url', originalUrl);
+    if (options.userAgent) params.set('userAgent', options.userAgent);
+    if (options.referer) params.set('referer', options.referer);
+    
+    return `${proxyBase}?${params.toString()}`;
   }
-
-  // If preferM3u8 is enabled and URL ends with .ts, try .m3u8 first
-  let urlToProxy = originalUrl;
-  if (options.preferM3u8 && isTsStream(originalUrl)) {
-    urlToProxy = convertTsToM3u8(originalUrl);
-    console.log('[stream-utils] Converting .ts to .m3u8:', urlToProxy);
-  }
-
-  // Build proxy URL with query parameters
-  const params = new URLSearchParams();
-  params.set('url', urlToProxy);
-
-  if (options.userAgent) {
-    params.set('userAgent', options.userAgent);
-  }
-  if (options.referer) {
-    params.set('referer', options.referer);
-  }
-
-  const proxyUrl = `${proxyBase}?${params.toString()}`;
-
-  // Debug logging
-  console.log('[stream-utils] Original URL:', originalUrl);
-  console.log('[stream-utils] Proxy URL:', proxyUrl);
-
-  return proxyUrl;
 }
 
 /**
@@ -89,17 +92,20 @@ export function hasMixedContentIssue(url: string): boolean {
 }
 
 /**
- * Check if URL is already proxied through our Edge Function
- * Returns true ONLY if URL has the correct proxy format with ?url= parameter
+ * Check if URL is already proxied/tunneled
+ * Returns true if URL is using Cloudflare tunnel OR legacy Supabase proxy
  */
 export function isProxiedUrl(url: string): boolean {
+  // Cloudflare Direct Tunnel (new method)
+  const CLOUDFLARE_VPN = 'https://vpn.premiumvinted.se';
+  if (url.startsWith(CLOUDFLARE_VPN)) return true;
+  
+  // Legacy Supabase proxy with url parameter
   const hasProxyPath = url.includes('/functions/v1/stream-proxy');
   const hasUrlParam = url.includes('?url=');
-  
-  // Must have BOTH the proxy path AND the url parameter to be correctly proxied
   if (hasProxyPath && hasUrlParam) return true;
   
-  // Custom domain with url parameter is also valid
+  // Custom domain with url parameter (legacy)
   const customDomain = 'line.premiumvinted.se';
   if (url.includes(customDomain) && hasUrlParam) return true;
   
