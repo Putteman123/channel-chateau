@@ -12,6 +12,7 @@ interface ChannelCardProps {
   isFavorite: boolean;
   onPlay: () => void;
   onToggleFavorite: () => void;
+  customEpgUrl?: string | null;
 }
 
 export function ChannelCard({
@@ -20,6 +21,7 @@ export function ChannelCard({
   isFavorite,
   onPlay,
   onToggleFavorite,
+  customEpgUrl,
 }: ChannelCardProps) {
   // Spatial navigation support
   const { ref, isFocused, isTvMode } = useFocusable<HTMLDivElement>({
@@ -31,14 +33,15 @@ export function ChannelCard({
       ref={ref}
       onClick={onPlay}
       className={cn(
-        "group relative overflow-hidden rounded-lg bg-card transition-all cursor-pointer",
-        "hover:ring-2 hover:ring-primary",
+        "group relative overflow-hidden rounded-lg bg-card transition-all duration-300 cursor-pointer",
+        "hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20",
+        "hover:scale-[1.02]",
         isTvMode && "focusable",
         isTvMode && isFocused && "is-focused"
       )}
     >
-      {/* Channel header with logo */}
-      <div className="relative aspect-video bg-muted">
+      {/* Channel header with logo - Picon style */}
+      <div className="relative aspect-video bg-gradient-to-br from-muted to-muted/50">
         {channel.stream_icon ? (
           <img
             src={getImageProxyUrl(channel.stream_icon)}
@@ -55,8 +58,9 @@ export function ChannelCard({
           </div>
         )}
 
-        {/* Live badge */}
-        <div className="absolute left-2 top-2 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
+        {/* Live badge with pulsing indicator */}
+        <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white shadow-lg">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
           LIVE
         </div>
 
@@ -65,7 +69,7 @@ export function ChannelCard({
           variant="ghost"
           size="icon"
           className={cn(
-            "absolute right-2 top-2 bg-black/50 text-white transition-opacity hover:bg-black/70",
+            "absolute right-2 top-2 h-8 w-8 rounded-full bg-black/60 text-white backdrop-blur-sm transition-all hover:bg-black/80",
             isFocused ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
           onClick={(e) => {
@@ -79,22 +83,23 @@ export function ChannelCard({
         {/* Play overlay */}
         <div
           className={cn(
-            "absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 transition-opacity",
+            "absolute inset-0 flex cursor-pointer items-center justify-center bg-black/50 transition-opacity duration-300",
             isFocused ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           )}
         >
-          <Button size="lg" className="h-14 w-14 rounded-full">
-            <Play className="h-6 w-6" />
-          </Button>
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg transition-transform group-hover:scale-110">
+            <Play className="h-5 w-5 fill-primary-foreground text-primary-foreground" />
+          </div>
         </div>
       </div>
 
       {/* Channel info with EPG */}
       <div className="p-3">
-        <h3 className="mb-2 line-clamp-1 font-medium">{channel.name}</h3>
+        <h3 className="mb-2 line-clamp-1 font-medium text-foreground">{channel.name}</h3>
         <EPGInfo
           credentials={credentials}
           streamId={channel.stream_id}
+          customEpgUrl={customEpgUrl}
           compact={true}
         />
       </div>

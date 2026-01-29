@@ -1,12 +1,14 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useFavorites } from '@/hooks/useFavorites';
-import { ContentCard } from '@/components/content/ContentCard';
-import { ContentRow } from '@/components/content/ContentRow';
+import { HeroBanner } from '@/components/content/HeroBanner';
+import { ContentCarousel } from '@/components/content/ContentCarousel';
+import { PosterCard } from '@/components/content/PosterCard';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,7 @@ import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Browse() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { activeSource, credentials, sources } = useStream();
   const { continueWatching, getProgress } = useWatchHistory(activeSource?.id);
   const { favorites, isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
@@ -27,7 +30,7 @@ export default function Browse() {
       return XtreamAPI.getLiveStreams(credentials);
     },
     enabled: !!credentials,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch movies
@@ -52,6 +55,56 @@ export default function Browse() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Build hero items from top-rated movies/series
+  const heroItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      title: string;
+      description?: string;
+      backdrop?: string;
+      poster?: string;
+      type: 'movie' | 'series';
+      year?: string;
+      rating?: number | string;
+    }> = [];
+
+    // Add top movies
+    if (movies) {
+      const topMovies = movies
+        .filter((m) => m.rating_5based && Number(m.rating_5based) > 3)
+        .slice(0, 3);
+      
+      topMovies.forEach((movie) => {
+        items.push({
+          id: String(movie.stream_id),
+          title: movie.name,
+          poster: movie.stream_icon,
+          type: 'movie',
+          rating: movie.rating_5based,
+        });
+      });
+    }
+
+    // Add top series
+    if (series) {
+      const topSeries = series
+        .filter((s) => s.rating_5based && Number(s.rating_5based) > 3)
+        .slice(0, 2);
+      
+      topSeries.forEach((s) => {
+        items.push({
+          id: String(s.series_id),
+          title: s.name,
+          poster: s.cover,
+          type: 'series',
+          rating: s.rating_5based,
+        });
+      });
+    }
+
+    return items.slice(0, 5);
+  }, [movies, series]);
+
   const handleToggleFavorite = (itemType: 'channel' | 'movie' | 'series', itemId: string, name: string, poster?: string) => {
     if (!activeSource) return;
     
@@ -68,13 +121,17 @@ export default function Browse() {
     }
   };
 
+  const handleHeroPlay = (item: { id: string; type: 'movie' | 'series' }) => {
+    navigate(`/${item.type}/${item.id}`);
+  };
+
   // No sources configured
   if (sources.length === 0) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Card className="max-w-md text-center">
+        <Card className="max-w-md border-border bg-card text-center">
           <CardHeader>
-            <CardTitle>{t('browse.noSources')}</CardTitle>
+            <CardTitle className="text-foreground">{t('browse.noSources')}</CardTitle>
             <CardDescription>
               {t('browse.noSourcesDesc')}
             </CardDescription>
@@ -107,7 +164,6 @@ export default function Browse() {
   }
 
   if (hasError) {
-    // Pass the first error to LoadError for detection
     const firstError = channelsError || moviesError || seriesError;
     return (
       <LoadError 
@@ -119,96 +175,103 @@ export default function Browse() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Hero Banner */}
+      {heroItems.length > 0 && (
+        <HeroBanner
+          items={heroItems}
+          onPlay={handleHeroPlay}
+          onInfo={(item) => navigate(`/${item.type}/${item.id}`)}
+        />
+      )}
+
       {/* Continue Watching */}
       {continueWatching.length > 0 && (
-        <ContentRow title={t('browse.continueWatching')}>
+        <ContentCarousel title={t('browse.continueWatching')}>
           {continueWatching.slice(0, 10).map((item) => (
-            <div key={item.id} className="w-[150px] shrink-0">
-              <ContentCard
-                id={item.item_id}
-                title={item.item_name || t('common.unknown')}
-                poster={item.item_poster || undefined}
-                type={item.item_type === 'episode' ? 'series' : item.item_type as 'channel' | 'movie' | 'series'}
-                progress={getProgress(item.stream_source_id, item.item_type, item.item_id)}
-              />
-            </div>
+            <PosterCard
+              key={item.id}
+              id={item.item_id}
+              title={item.item_name || t('common.unknown')}
+              poster={item.item_poster || undefined}
+              type={item.item_type === 'episode' ? 'series' : item.item_type as 'channel' | 'movie' | 'series'}
+              progress={getProgress(item.stream_source_id, item.item_type, item.item_id)}
+            />
           ))}
-        </ContentRow>
+        </ContentCarousel>
       )}
 
       {/* Favorites */}
       {favorites.length > 0 && (
-        <ContentRow title={t('browse.favorites')}>
+        <ContentCarousel title={t('browse.favorites')}>
           {favorites.slice(0, 10).map((fav) => (
-            <div key={fav.id} className="w-[150px] shrink-0">
-              <ContentCard
-                id={fav.item_id}
-                title={fav.item_name || t('common.unknown')}
-                poster={fav.item_poster || undefined}
-                type={fav.item_type}
-                isFavorite={true}
-                onToggleFavorite={() => handleToggleFavorite(fav.item_type, fav.item_id, fav.item_name || '', fav.item_poster || undefined)}
-              />
-            </div>
+            <PosterCard
+              key={fav.id}
+              id={fav.item_id}
+              title={fav.item_name || t('common.unknown')}
+              poster={fav.item_poster || undefined}
+              type={fav.item_type}
+              isFavorite={true}
+              onToggleFavorite={() => handleToggleFavorite(fav.item_type, fav.item_id, fav.item_name || '', fav.item_poster || undefined)}
+            />
           ))}
-        </ContentRow>
+        </ContentCarousel>
       )}
 
       {/* Live TV */}
       {liveChannels && liveChannels.length > 0 && (
-        <ContentRow title={t('browse.liveTV')} viewAllLink="/live">
+        <ContentCarousel title={t('browse.liveTV')} viewAllLink="/live">
           {liveChannels.slice(0, 15).map((channel) => (
-            <div key={channel.stream_id} className="w-[150px] shrink-0">
-              <ContentCard
-                id={String(channel.stream_id)}
-                title={channel.name}
-                poster={channel.stream_icon}
-                type="channel"
-                isFavorite={isFavorite(activeSource!.id, 'channel', String(channel.stream_id))}
-                onToggleFavorite={() => handleToggleFavorite('channel', String(channel.stream_id), channel.name, channel.stream_icon)}
-              />
-            </div>
+            <PosterCard
+              key={channel.stream_id}
+              id={String(channel.stream_id)}
+              title={channel.name}
+              poster={channel.stream_icon}
+              type="channel"
+              variant="landscape"
+              isFavorite={isFavorite(activeSource!.id, 'channel', String(channel.stream_id))}
+              onToggleFavorite={() => handleToggleFavorite('channel', String(channel.stream_id), channel.name, channel.stream_icon)}
+            />
           ))}
-        </ContentRow>
+        </ContentCarousel>
       )}
 
-      {/* Movies */}
+      {/* Movies - Stående poster (2:3) */}
       {movies && movies.length > 0 && (
-        <ContentRow title={t('browse.movies')} viewAllLink="/movies">
+        <ContentCarousel title={t('browse.movies')} viewAllLink="/movies">
           {movies.slice(0, 15).map((movie) => (
-            <div key={movie.stream_id} className="w-[150px] shrink-0">
-              <ContentCard
-                id={String(movie.stream_id)}
-                title={movie.name}
-                poster={movie.stream_icon}
-                type="movie"
-                rating={movie.rating_5based}
-                isFavorite={isFavorite(activeSource!.id, 'movie', String(movie.stream_id))}
-                onToggleFavorite={() => handleToggleFavorite('movie', String(movie.stream_id), movie.name, movie.stream_icon)}
-              />
-            </div>
+            <PosterCard
+              key={movie.stream_id}
+              id={String(movie.stream_id)}
+              title={movie.name}
+              poster={movie.stream_icon}
+              type="movie"
+              rating={movie.rating_5based}
+              variant="poster"
+              isFavorite={isFavorite(activeSource!.id, 'movie', String(movie.stream_id))}
+              onToggleFavorite={() => handleToggleFavorite('movie', String(movie.stream_id), movie.name, movie.stream_icon)}
+            />
           ))}
-        </ContentRow>
+        </ContentCarousel>
       )}
 
-      {/* Series */}
+      {/* Series - Stående poster */}
       {series && series.length > 0 && (
-        <ContentRow title={t('browse.series')} viewAllLink="/series">
+        <ContentCarousel title={t('browse.series')} viewAllLink="/series">
           {series.slice(0, 15).map((s) => (
-            <div key={s.series_id} className="w-[150px] shrink-0">
-              <ContentCard
-                id={String(s.series_id)}
-                title={s.name}
-                poster={s.cover}
-                type="series"
-                rating={s.rating_5based}
-                isFavorite={isFavorite(activeSource!.id, 'series', String(s.series_id))}
-                onToggleFavorite={() => handleToggleFavorite('series', String(s.series_id), s.name, s.cover)}
-              />
-            </div>
+            <PosterCard
+              key={s.series_id}
+              id={String(s.series_id)}
+              title={s.name}
+              poster={s.cover}
+              type="series"
+              rating={s.rating_5based}
+              variant="poster"
+              isFavorite={isFavorite(activeSource!.id, 'series', String(s.series_id))}
+              onToggleFavorite={() => handleToggleFavorite('series', String(s.series_id), s.name, s.cover)}
+            />
           ))}
-        </ContentRow>
+        </ContentCarousel>
       )}
     </div>
   );
