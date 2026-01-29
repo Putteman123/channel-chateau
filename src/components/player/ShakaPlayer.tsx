@@ -73,6 +73,17 @@ function diagnoseError(
   const isHttpSource = src.startsWith('http://');
   const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
+  // HTTP 551 - IP-locked/tokenized stream
+  if (httpStatus === 551 || errorMessage?.includes('551') || errorMessage?.includes('IP-locked')) {
+    return {
+      type: 'network',
+      message: 'Strömmen är IP-låst',
+      details: 'HTTP 551 - Länken är genererad för en specifik IP-adress och fungerar inte via proxy. Använd direktuppspelning eller öppna i VLC på din dator.',
+      code: errorCode,
+      httpStatus: 551,
+    };
+  }
+
   // HTTP 458 - Provider actively blocking proxy/datacenter IPs
   if (httpStatus === 458 || errorMessage?.includes('458')) {
     return {
@@ -763,15 +774,26 @@ export function ShakaPlayer({
               </AlertDescription>
             </Alert>
 
-            {/* Prominent VLC button for provider blocking (458) */}
-            {(playerError.httpStatus === 458 || playerError.httpStatus === 502) && (
-              <div className="p-4 rounded-lg bg-primary/10 border border-primary/30 space-y-3">
-                <p className="text-sm font-medium text-primary">
-                  ✓ Rekommenderad lösning:
+            {/* Prominent VLC button for provider blocking (458, 502) or IP-locked (551) */}
+            {(playerError.httpStatus === 458 || playerError.httpStatus === 502 || playerError.httpStatus === 551) && (
+              <div className={cn(
+                "p-4 rounded-lg border space-y-3",
+                playerError.httpStatus === 551 
+                  ? "bg-orange-500/10 border-orange-500/30" 
+                  : "bg-primary/10 border-primary/30"
+              )}>
+                <p className={cn(
+                  "text-sm font-medium",
+                  playerError.httpStatus === 551 ? "text-orange-500" : "text-primary"
+                )}>
+                  {playerError.httpStatus === 551 
+                    ? "🔒 Strömmen är IP-låst" 
+                    : "✓ Rekommenderad lösning:"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Öppna strömmen i en extern spelare som körs på din dator. 
-                  Detta använder din hem-IP istället för våra servrar.
+                  {playerError.httpStatus === 551 
+                    ? "Länken är genererad för din leverantörs IP och fungerar inte via vår proxy. Öppna strömmen i VLC på din dator för att använda din hem-IP."
+                    : "Öppna strömmen i en extern spelare som körs på din dator. Detta använder din hem-IP istället för våra servrar."}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button 
@@ -805,7 +827,7 @@ export function ShakaPlayer({
               </Button>
 
               {/* Only show dropdown if not already showing prominent buttons */}
-              {playerError.httpStatus !== 458 && playerError.httpStatus !== 502 && (
+              {playerError.httpStatus !== 458 && playerError.httpStatus !== 502 && playerError.httpStatus !== 551 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline">
