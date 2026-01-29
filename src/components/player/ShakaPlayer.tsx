@@ -18,7 +18,7 @@ import {
   isTsStream,
   hasMixedContentIssue,
 } from '@/lib/stream-utils';
-import { isCloudflareUrl, CLOUDFLARE_VPN_DOMAIN } from '@/lib/cloudflare-rewrite';
+import { isCloudflareUrl, CLOUDFLARE_VPN_DOMAIN, getConnectionDisplayName } from '@/lib/cloudflare-rewrite';
 
 /** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
 export interface StreamHttpHeaders {
@@ -55,6 +55,7 @@ interface DiagnosticsInfo {
   streamUrl: string;
   urlType: string;
   isProxied: boolean;
+  connectionType: string;  // New: Display connection type
   protocol: 'http' | 'https';
   pageProtocol: string;
   isTsFormat: boolean;
@@ -308,6 +309,7 @@ export function ShakaPlayer({
           streamUrl: effectiveSrc,
           urlType: 'Fel',
           isProxied: false,
+          connectionType: 'Error',
           protocol: 'http',
           pageProtocol: typeof window !== 'undefined' ? window.location.protocol : 'unknown',
           isTsFormat: false,
@@ -319,13 +321,26 @@ export function ShakaPlayer({
         return;
       }
 
-      // Check if using proxy (has ?url= param)
-      const isProxied = effectiveSrc.includes('/functions/v1/stream-proxy') && 
-                        effectiveSrc.includes('?url=');
+      // Check if using Cloudflare tunnel (new direct method)
+      const isTunneled = isCloudflareUrl(effectiveSrc);
       
-      // Extract the original URL from proxy for display
+      // Check if using old Supabase proxy (legacy)
+      const isSupabaseProxy = effectiveSrc.includes('/functions/v1/stream-proxy') && 
+                              effectiveSrc.includes('?url=');
+      
+      // Combined proxy status
+      const isProxied = isTunneled || isSupabaseProxy;
+      
+      // Determine connection type for display
+      const connectionType = isTunneled 
+        ? getConnectionDisplayName()  // "Secure Tunnel (Cloudflare)"
+        : isSupabaseProxy 
+          ? 'MITM Proxy (Supabase)' 
+          : 'Direct';
+      
+      // Extract the original URL from proxy for display (legacy support)
       let displayUrl = effectiveSrc;
-      if (isProxied) {
+      if (isSupabaseProxy) {
         try {
           const url = new URL(effectiveSrc);
           const originalUrl = url.searchParams.get('url');
@@ -363,6 +378,7 @@ export function ShakaPlayer({
         streamUrl: displayUrl,
         urlType,
         isProxied,
+        connectionType,
         protocol,
         pageProtocol,
         isTsFormat: tsFormat,
@@ -371,13 +387,13 @@ export function ShakaPlayer({
 
       // Enhanced logging
       console.log('[ShakaPlayer] ─────────────────────────────');
-      console.log('[ShakaPlayer] Mode:', isPlayerApiFormat ? 'Player API + MITM Proxy' : 'MITM Proxy (redirects handled server-side)');
+      console.log('[ShakaPlayer] Connection:', connectionType);
       console.log('[ShakaPlayer] Effective URL:', effectiveSrc.substring(0, 80) + '...');
-      console.log('[ShakaPlayer] Original URL:', displayUrl);
-      console.log('[ShakaPlayer] Is Proxied:', isProxied ? '✅ Ja' : '❌ Nej');
+      console.log('[ShakaPlayer] Display URL:', displayUrl.substring(0, 60) + '...');
+      console.log('[ShakaPlayer] Is Tunneled:', isTunneled ? '✅ Yes (Cloudflare)' : '❌ No');
       console.log('[ShakaPlayer] URL Type:', urlType);
       if (hasMixedContent) {
-        console.warn('[ShakaPlayer] ⚠️ Mixed Content detected! HTTP stream without proxy.');
+        console.warn('[ShakaPlayer] ⚠️ Mixed Content detected! HTTP stream without tunnel.');
       }
       console.log('[ShakaPlayer] ─────────────────────────────');
     }
@@ -938,18 +954,18 @@ export function ShakaPlayer({
                       </p>
                     )}
                     <p>
-                      <strong>Route:</strong>{' '}
+                      <strong>Connection:</strong>{' '}
                       <span className={diagnostics.isProxied ? 'text-green-500' : 'text-muted-foreground'}>
-                        {diagnostics.isProxied ? 'MITM Proxy (redirects server-side)' : 'Direct'}
+                        {diagnostics.connectionType || (diagnostics.isProxied ? 'Tunneled' : 'Direct')}
                       </span>
                     </p>
                     <p><strong>Shaka:</strong> v{diagnostics.shakaVersion}</p>
                     <p><strong>URL:</strong> <span className="break-all">{diagnostics.streamUrl}</span></p>
                     <p><strong>Typ:</strong> {diagnostics.urlType}</p>
                     <p>
-                      <strong>Proxy:</strong>{' '}
+                      <strong>Secure:</strong>{' '}
                       <span className={diagnostics.isProxied ? 'text-green-500' : 'text-yellow-500'}>
-                        {diagnostics.isProxied ? 'Ja ✅' : 'Nej ⚠️'}
+                        {diagnostics.isProxied ? 'Ja ✅ (SSL Tunnel)' : 'Nej ⚠️'}
                       </span>
                       {!diagnostics.isProxied && diagnostics.protocol === 'http' && diagnostics.pageProtocol === 'https:' && (
                         <span className="ml-2 text-red-500">(Mixed Content-risk!)</span>
