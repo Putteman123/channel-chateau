@@ -201,12 +201,31 @@ serve(async (req) => {
     // Get Range header from incoming request (important for VOD seeking)
     const rangeHeader = req.headers.get("Range");
     
-    // Build fetch headers - use VLC User-Agent for maximum IPTV compatibility
+    // ========================================
+    // ADVANCED HEADER SPOOFING - Chrome Stealth Mode
+    // ========================================
+    // Use a modern Chrome browser profile to bypass User-Agent filtering
+    // Many IPTV providers block VLC/bot User-Agents but allow browsers
+    const chromeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    
     const fetchHeaders: Record<string, string> = {
-      "User-Agent": customUserAgent || "VLC/3.0.18 LibVLC/3.0.18",
-      "Accept": "*/*",
-      "Accept-Language": "en-US,en;q=0.9",
+      "User-Agent": customUserAgent || chromeUserAgent,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+      "Accept-Language": "en-US,en;q=0.9,sv;q=0.8",
+      "Accept-Encoding": "gzip, deflate, br",
       "Connection": "keep-alive",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      // Sec-Fetch headers - make request look like a browser navigation
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1",
+      // Additional Chrome headers
+      "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      "sec-ch-ua-mobile": "?0",
+      "sec-ch-ua-platform": '"Windows"',
     };
 
     // Forward Range header for VOD seeking support
@@ -227,6 +246,8 @@ serve(async (req) => {
       fetchHeaders["Referer"] = streamOrigin + "/";
       fetchHeaders["Origin"] = streamOrigin;
     }
+    
+    console.log(`[stream-proxy] 🕵️ Stealth Mode: Chrome UA + Sec-Fetch headers`);
 
     // Build URL list to try - prioritize HTTP for live streams (IPTV providers often block HTTPS)
     const isLiveStream = urlToFetch.includes('/live/') || urlToFetch.endsWith('.ts');
@@ -277,16 +298,29 @@ serve(async (req) => {
       const isConnectionRefused = lastError?.message?.includes("Connection refused") || 
                                    lastError?.message?.includes("ECONNREFUSED");
       const isHttp458 = lastError?.message?.includes("458");
+      const isHttp551 = lastError?.message?.includes("551");
       const actualHttpStatus = (lastError as any)?.httpStatus;
       
-      console.error(`[stream-proxy] All URLs failed. Last error: ${lastError?.message}, HTTP status: ${actualHttpStatus || 'unknown'}`);
+      // Log the final URL that was attempted (important for debugging tokenized/IP-locked streams)
+      console.error(`[stream-proxy] ❌ All URLs failed.`);
+      console.error(`[stream-proxy] Last error: ${lastError?.message}`);
+      console.error(`[stream-proxy] HTTP status: ${actualHttpStatus || 'unknown'}`);
+      console.error(`[stream-proxy] Final URL attempted: ${redactUrl(finalUrl).substring(0, 100)}...`);
       
       // Determine appropriate response
       let responseStatus: number;
       let errorType: string;
       let hint: string;
+      let isIpLocked = false;
       
-      if (isHttp458 || actualHttpStatus === 458) {
+      if (isHttp551 || actualHttpStatus === 551) {
+        // HTTP 551 - Advanced blocking, likely IP-locked/tokenized stream
+        responseStatus = 551;
+        errorType = "IP-locked stream";
+        hint = "HTTP 551 - Strömmen är IP-låst eller tokeniserad. Länken fungerar endast från den IP som genererade den. Använd direktuppspelning via VPN eller öppna i VLC.";
+        isIpLocked = true;
+        console.error(`[stream-proxy] 🔒 HTTP 551 detected - stream is IP-locked/tokenized`);
+      } else if (isHttp458 || actualHttpStatus === 458) {
         responseStatus = 458;
         errorType = "Provider blocking";
         hint = "HTTP 458 - leverantören blockerar datacenter-IP. Öppna strömmen i VLC/MPV.";
@@ -297,7 +331,7 @@ serve(async (req) => {
       } else if (actualHttpStatus === 403) {
         responseStatus = 403;
         errorType = "Access denied";
-        hint = "Åtkomst nekad (HTTP 403). Kontrollera prenumerationen.";
+        hint = "Åtkomst nekad (HTTP 403). Kontrollera prenumerationen eller strömmen kan vara IP-låst.";
       } else if (actualHttpStatus === 404) {
         responseStatus = 404;
         errorType = "Not found";
@@ -323,9 +357,16 @@ serve(async (req) => {
           hint,
           httpStatus: responseStatus,
           isProviderBlocking: isHttp458 || isConnectionRefused || actualHttpStatus === 458,
+          isIpLocked,
+          finalUrlAttempted: redactUrl(finalUrl),
         }),
         { status: responseStatus, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+    
+    // Log successful redirect chain
+    if (finalUrl !== urlToFetch) {
+      console.log(`[stream-proxy] ✅ Redirect chain completed: ${redactUrl(urlToFetch).substring(0, 50)}... → ${redactUrl(finalUrl).substring(0, 50)}...`);
     }
 
     // Get content info from response
