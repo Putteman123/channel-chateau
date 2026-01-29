@@ -98,6 +98,10 @@ async function fetchWithRetry(
         headers,
         redirect: "follow",
       });
+
+       // Always log the final response URL (even if no redirect happened)
+       // Helpful for tokenized / IP-locked providers that rewrite URLs server-side.
+       console.log(`[stream-proxy] Upstream response.url: ${redactUrl(response.url).substring(0, 120)}...`);
       
       // Track final URL after redirects
       if (response.url !== url) {
@@ -315,9 +319,11 @@ serve(async (req) => {
       
       if (isHttp551 || actualHttpStatus === 551) {
         // HTTP 551 - Advanced blocking, likely IP-locked/tokenized stream
-        responseStatus = 551;
+        // IMPORTANT: Some runtimes/clients treat non-standard 5xx like 551 as a platform/runtime error.
+        // Return a standard status (423 Locked) but preserve the upstream status in the JSON payload.
+        responseStatus = 423;
         errorType = "IP-locked stream";
-        hint = "HTTP 551 - Strömmen är IP-låst eller tokeniserad. Länken fungerar endast från den IP som genererade den. Använd direktuppspelning via VPN eller öppna i VLC.";
+        hint = "HTTP 551 (upstream) - Strömmen är IP-låst eller tokeniserad. Länken fungerar endast från den IP som genererade den. Använd direktuppspelning via VPN eller öppna i VLC.";
         isIpLocked = true;
         console.error(`[stream-proxy] 🔒 HTTP 551 detected - stream is IP-locked/tokenized`);
       } else if (isHttp458 || actualHttpStatus === 458) {
@@ -356,6 +362,7 @@ serve(async (req) => {
           details: lastError?.message || "Could not connect to stream",
           hint,
           httpStatus: responseStatus,
+          upstreamHttpStatus: actualHttpStatus || null,
           isProviderBlocking: isHttp458 || isConnectionRefused || actualHttpStatus === 458,
           isIpLocked,
           finalUrlAttempted: redactUrl(finalUrl),
