@@ -310,8 +310,10 @@ export function ShakaPlayer({
       // Determine URL type - handle extensionless URLs
       const hasExtension = displayUrl.match(/\.(m3u8|ts|mp4|mkv)(\?|$)/i);
       const endsWithNumber = /\/\d+(\?|$)/.test(displayUrl);
+      const isPlayerApiFormat = displayUrl.includes('/live/play/');
       
-      const urlType = displayUrl.includes('.m3u8') ? 'HLS (.m3u8)'
+      const urlType = isPlayerApiFormat ? 'Player API (ingen filändelse)'
+        : displayUrl.includes('.m3u8') ? 'HLS (.m3u8)'
         : displayUrl.includes('.ts') ? 'MPEG-TS (.ts)'
         : displayUrl.includes('.mp4') ? 'MP4'
         : displayUrl.includes('.mkv') ? 'MKV'
@@ -322,7 +324,7 @@ export function ShakaPlayer({
       const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
       const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
 
-      const tsFormat = isTsStream(displayUrl) || endsWithNumber || !hasExtension;
+      const tsFormat = isTsStream(displayUrl) || endsWithNumber || !hasExtension || isPlayerApiFormat;
       
       // Mixed Content only matters if NOT proxied
       const hasMixedContent = !isProxied && 
@@ -341,7 +343,7 @@ export function ShakaPlayer({
 
       // Enhanced logging
       console.log('[ShakaPlayer] ─────────────────────────────');
-      console.log('[ShakaPlayer] Mode: MITM Proxy (redirects handled server-side)');
+      console.log('[ShakaPlayer] Mode:', isPlayerApiFormat ? 'Player API + MITM Proxy' : 'MITM Proxy (redirects handled server-side)');
       console.log('[ShakaPlayer] Effective URL:', effectiveSrc.substring(0, 80) + '...');
       console.log('[ShakaPlayer] Original URL:', displayUrl);
       console.log('[ShakaPlayer] Is Proxied:', isProxied ? '✅ Ja' : '❌ Nej');
