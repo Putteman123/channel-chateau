@@ -7,10 +7,16 @@ const corsHeaders = {
 };
 
 /**
- * Stream Proxy Edge Function
+ * Stream Proxy Edge Function - Man-in-the-Middle Mode
  * 
- * Proxies HLS streams (m3u8 + ts segments) through HTTPS to solve Mixed Content issues.
- * Uses ReadableStream for real-time streaming - does NOT buffer entire file.
+ * Proxies HLS streams and handles redirects INTERNALLY to avoid Mixed Content issues.
+ * The proxy follows all redirects server-side and returns the final content to the client.
+ * 
+ * Key behaviors:
+ * - Follows HTTP 3xx redirects internally (never sends redirect to client)
+ * - Handles streams WITHOUT file extensions (assumes MPEG-TS by default)
+ * - Does NOT convert .ts to .m3u8 - sends exact URL as-is
+ * - Uses VLC User-Agent for IPTV provider compatibility
  * 
  * Usage:
  * GET /stream-proxy?url=<encoded-stream-url>
@@ -57,10 +63,8 @@ serve(async (req) => {
     // Decode URL if encoded
     const decodedUrl = decodeURIComponent(streamUrl);
     
-    // Log with custom headers info
-    const hasCustomHeaders = customUserAgent || customReferer;
     console.log(`[stream-proxy] Proxying: ${redactUrl(decodedUrl).substring(0, 100)}...`);
-    if (hasCustomHeaders) {
+    if (customUserAgent || customReferer) {
       console.log(`[stream-proxy] Custom headers: UA=${customUserAgent ? 'yes' : 'no'}, Referer=${customReferer ? 'yes' : 'no'}`);
     }
 
@@ -75,10 +79,9 @@ serve(async (req) => {
     // Get Range header from incoming request (important for VOD seeking)
     const rangeHeader = req.headers.get("Range");
     
-    // Build fetch headers - use custom values if provided, otherwise defaults
-    // Use "IPTV Smarters Pro" as default - widely accepted by IPTV providers
+    // Build fetch headers - use VLC User-Agent for maximum IPTV compatibility
     const fetchHeaders: Record<string, string> = {
-      "User-Agent": customUserAgent || "IPTV Smarters Pro/3.0.9",
+      "User-Agent": customUserAgent || "VLC/3.0.18 LibVLC/3.0.18",
       "Accept": "*/*",
       "Accept-Language": "en-US,en;q=0.9",
       "Connection": "keep-alive",
@@ -93,10 +96,8 @@ serve(async (req) => {
     // Use custom referer if provided, otherwise fall back to stream origin
     if (customReferer) {
       fetchHeaders["Referer"] = customReferer;
-      // Extract origin from custom referer
       try {
-        const refererOrigin = new URL(customReferer).origin;
-        fetchHeaders["Origin"] = refererOrigin;
+        fetchHeaders["Origin"] = new URL(customReferer).origin;
       } catch {
         fetchHeaders["Origin"] = customReferer;
       }
@@ -105,29 +106,22 @@ serve(async (req) => {
       fetchHeaders["Origin"] = streamOrigin;
     }
 
-    // For live streams (.ts), prioritize HTTP first as many IPTV providers don't support HTTPS
-    // For other content, try HTTPS first then fall back to HTTP
+    // Build URL list to try - prioritize HTTP for live streams (IPTV providers often block HTTPS)
     const isLiveStream = decodedUrl.includes('/live/') || decodedUrl.endsWith('.ts');
     const urlsToTry: string[] = [];
     
     if (decodedUrl.startsWith("https://")) {
       if (isLiveStream) {
-        // Live streams: Try HTTP first (many IPTV providers don't support HTTPS for live streams)
         urlsToTry.push(decodedUrl.replace("https://", "http://"));
         urlsToTry.push(decodedUrl);
       } else {
-        // VOD: Try HTTPS first
         urlsToTry.push(decodedUrl);
         urlsToTry.push(decodedUrl.replace("https://", "http://"));
       }
     } else if (decodedUrl.startsWith("http://")) {
-      if (isLiveStream) {
-        // Live streams: Stay with HTTP
-        urlsToTry.push(decodedUrl);
-      } else {
-        // VOD: Try HTTPS first
+      urlsToTry.push(decodedUrl);
+      if (!isLiveStream) {
         urlsToTry.push(decodedUrl.replace("http://", "https://"));
-        urlsToTry.push(decodedUrl);
       }
     } else {
       urlsToTry.push(decodedUrl);
@@ -135,25 +129,33 @@ serve(async (req) => {
 
     let response: Response | null = null;
     let lastError: Error | null = null;
+    let finalUrl: string = decodedUrl;
 
     for (const urlToTry of urlsToTry) {
       try {
         console.log(`[stream-proxy] Trying: ${urlToTry.substring(0, 60)}...`);
         
+        // CRITICAL: redirect: 'follow' makes the proxy follow redirects INTERNALLY
+        // The client never sees the 302 - we handle it server-side (Man-in-the-Middle)
         response = await fetch(urlToTry, {
           headers: fetchHeaders,
-          redirect: "follow",
+          redirect: "follow", // Follow redirects internally - never send to client!
         });
+
+        // Log the final URL after redirects
+        if (response.url !== urlToTry) {
+          console.log(`[stream-proxy] Followed redirect to: ${response.url.substring(0, 80)}...`);
+          finalUrl = response.url;
+        }
 
         // Accept 200 OK and 206 Partial Content (for Range requests)
         if (response.ok || response.status === 206) {
-          console.log(`[stream-proxy] Success (HTTP ${response.status}) with: ${urlToTry.substring(0, 60)}...`);
+          console.log(`[stream-proxy] Success (HTTP ${response.status}) - Final URL: ${finalUrl.substring(0, 60)}...`);
           break;
         } else {
           const statusCode = response.status;
           console.error(`[stream-proxy] HTTP ${statusCode} from: ${urlToTry.substring(0, 60)}...`);
           lastError = new Error(`HTTP ${statusCode}`);
-          // Store the actual status for error response
           (lastError as any).httpStatus = statusCode;
           response = null;
         }
@@ -172,7 +174,7 @@ serve(async (req) => {
       
       console.error(`[stream-proxy] All URLs failed. Last error: ${lastError?.message}, HTTP status: ${actualHttpStatus || 'unknown'}`);
       
-      // Determine the appropriate response status and hint
+      // Determine appropriate response
       let responseStatus: number;
       let errorType: string;
       let hint: string;
@@ -180,27 +182,27 @@ serve(async (req) => {
       if (isHttp458 || actualHttpStatus === 458) {
         responseStatus = 458;
         errorType = "Provider blocking";
-        hint = "HTTP 458 innebär att leverantören aktivt blockerar datacenter-IP. Öppna strömmen i VLC eller annan extern spelare för att använda din hem-IP.";
+        hint = "HTTP 458 - leverantören blockerar datacenter-IP. Öppna strömmen i VLC/MPV.";
       } else if (actualHttpStatus === 403) {
         responseStatus = 403;
         errorType = "Access denied";
-        hint = "Åtkomst nekad (HTTP 403). Kontrollera att din prenumeration är aktiv och att inloggningsuppgifterna är korrekta.";
+        hint = "Åtkomst nekad (HTTP 403). Kontrollera prenumerationen.";
       } else if (actualHttpStatus === 404) {
         responseStatus = 404;
         errorType = "Not found";
-        hint = "Strömmen hittades inte (HTTP 404). Kontrollera att URL:en är korrekt.";
+        hint = "Strömmen hittades inte (HTTP 404).";
       } else if (actualHttpStatus === 500 || actualHttpStatus === 503) {
         responseStatus = actualHttpStatus;
         errorType = "Server error";
-        hint = `IPTV-servern returnerade ett fel (HTTP ${actualHttpStatus}). Servern kan vara överbelastad eller nere.`;
+        hint = `IPTV-servern fel (HTTP ${actualHttpStatus}).`;
       } else if (isConnectionRefused) {
         responseStatus = 502;
         errorType = "Connection refused";
-        hint = "Din IPTV-leverantör blockerar anslutningar från datacenter. Öppna strömmen i VLC eller annan extern spelare.";
+        hint = "Anslutning nekad. Öppna i VLC/MPV.";
       } else {
         responseStatus = actualHttpStatus || 502;
         errorType = "Upstream unreachable";
-        hint = `Strömmen är inte tillgänglig (HTTP ${actualHttpStatus || 'okänd'}). Kontrollera att URL:en är korrekt och att din prenumeration är aktiv.`;
+        hint = `Kunde inte nå strömmen (HTTP ${actualHttpStatus || 'okänd'}).`;
       }
       
       return new Response(
@@ -215,22 +217,21 @@ serve(async (req) => {
       );
     }
 
+    // Get content info from response
     const contentType = response.headers.get("content-type") || "application/octet-stream";
     const contentLength = response.headers.get("content-length");
     
-    // For m3u8 playlists, rewrite URLs to go through proxy
-    if (contentType.includes("mpegurl") || contentType.includes("m3u8") || decodedUrl.includes(".m3u8")) {
+    // Handle m3u8 playlists - rewrite URLs to go through proxy
+    if (contentType.includes("mpegurl") || contentType.includes("m3u8") || finalUrl.includes(".m3u8")) {
       const text = await response.text();
       
-      // Get base URL for relative paths
-      const baseUrl = decodedUrl.substring(0, decodedUrl.lastIndexOf("/") + 1);
+      // Get base URL for relative paths (from FINAL URL after redirects)
+      const baseUrl = finalUrl.substring(0, finalUrl.lastIndexOf("/") + 1);
       
-      // DYNAMICALLY determine proxy domain from request URL
-      // This allows the proxy to work whether called via Cloudflare custom domain or Supabase directly
-      // The segments will route through the same domain as the initial request
+      // Dynamically determine proxy domain from request URL
       const requestUrl = new URL(req.url);
       const proxyBase = `${requestUrl.origin}/functions/v1/stream-proxy`;
-      console.log(`[stream-proxy] Using proxy base: ${proxyBase}`);
+      console.log(`[stream-proxy] Rewriting m3u8 with proxy base: ${proxyBase}`);
       
       // Build query params to propagate custom headers
       const headerParams = [];
@@ -242,10 +243,9 @@ serve(async (req) => {
       const rewrittenPlaylist = text.split("\n").map(line => {
         const trimmed = line.trim();
         
-        // Skip empty lines
         if (trimmed === "") return line;
         
-        // Handle comments but check for URI= in EXT-X-KEY or similar
+        // Handle comments but check for URI= in EXT-X-KEY
         if (trimmed.startsWith("#")) {
           if (trimmed.includes('URI="')) {
             return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
@@ -256,11 +256,10 @@ serve(async (req) => {
           return line;
         }
         
-        // Rewrite segment URLs - include custom headers for each segment
+        // Rewrite segment URLs
         if (trimmed.startsWith("http")) {
           return `${proxyBase}?url=${encodeURIComponent(trimmed)}${headerSuffix}`;
         } else if (trimmed.length > 0) {
-          // Relative URL
           const fullUrl = baseUrl + trimmed;
           return `${proxyBase}?url=${encodeURIComponent(fullUrl)}${headerSuffix}`;
         }
@@ -268,7 +267,7 @@ serve(async (req) => {
         return line;
       }).join("\n");
 
-      console.log(`[stream-proxy] Rewrote m3u8 playlist (${text.length} bytes) with proxy: ${proxyBase}`);
+      console.log(`[stream-proxy] Rewrote m3u8 playlist (${text.length} bytes)`);
 
       return new Response(rewrittenPlaylist, {
         headers: {
@@ -279,8 +278,8 @@ serve(async (req) => {
       });
     }
 
-    // For TS segments and other binary content, STREAM directly using ReadableStream
-    // This is critical for real-time video - we pipe the response body directly
+    // For all other content (TS segments, extensionless streams, images, etc.)
+    // Stream directly using ReadableStream (no buffering)
     if (!response.body) {
       return new Response(
         JSON.stringify({ error: "No response body from upstream" }),
@@ -288,31 +287,39 @@ serve(async (req) => {
       );
     }
 
-    // Use upstream status (200 or 206 for partial content)
     const upstreamStatus = response.status;
-    console.log(`[stream-proxy] Streaming ${contentType} (${contentLength || 'unknown'} bytes, HTTP ${upstreamStatus})`);
-
+    
+    // Detect content type from URL if Content-Type is generic
+    let finalContentType = contentType;
+    
+    // Check if URL has no extension OR ends with a number (like /79662)
+    const hasNoExtension = !finalUrl.match(/\.(ts|m3u8|mp4|mkv|avi|jpg|jpeg|png|gif|webp)(\?|$)/i);
+    const endsWithNumber = /\/\d+(\?|$)/.test(finalUrl);
+    
+    if (finalUrl.endsWith('.ts') || finalUrl.includes('.ts?')) {
+      finalContentType = 'video/mp2t';
+    } else if (finalUrl.includes('.m3u8')) {
+      finalContentType = 'application/vnd.apple.mpegurl';
+    } else if ((hasNoExtension || endsWithNumber) && 
+               (contentType === 'application/octet-stream' || contentType.includes('video'))) {
+      // Extensionless URL (like /79662) - assume MPEG-TS for IPTV streams
+      finalContentType = 'video/mp2t';
+      console.log(`[stream-proxy] Extensionless URL detected, assuming video/mp2t`);
+    }
+    
     // Detect if this is an image for better caching
     const isImage = contentType.includes('image') || 
-                    decodedUrl.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i);
+                    finalUrl.match(/\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i);
 
-    // Ensure correct Content-Type for video segments
-    let finalContentType = contentType;
-    if (decodedUrl.endsWith('.ts') || decodedUrl.includes('.ts?')) {
-      finalContentType = 'video/mp2t';
-    } else if (decodedUrl.includes('.m3u8')) {
-      finalContentType = 'application/vnd.apple.mpegurl';
-    }
+    console.log(`[stream-proxy] Streaming ${finalContentType} (${contentLength || 'unknown'} bytes, HTTP ${upstreamStatus})`);
 
     // Build response headers
     const responseHeaders: Record<string, string> = {
       ...corsHeaders,
       "Content-Type": finalContentType,
-      // Use longer cache for images (24h), shorter for streams (5min)
       "Cache-Control": isImage ? "max-age=86400, public" : "max-age=300",
     };
 
-    // Pass through content-length if available
     if (contentLength) {
       responseHeaders["Content-Length"] = contentLength;
     }
@@ -321,20 +328,12 @@ serve(async (req) => {
     const contentRange = response.headers.get("content-range");
     if (contentRange) {
       responseHeaders["Content-Range"] = contentRange;
-      console.log(`[stream-proxy] Forwarding Content-Range: ${contentRange}`);
     }
 
-    // Forward Accept-Ranges header
-    const acceptRanges = response.headers.get("accept-ranges");
-    if (acceptRanges) {
-      responseHeaders["Accept-Ranges"] = acceptRanges;
-    } else {
-      // Indicate we support range requests
-      responseHeaders["Accept-Ranges"] = "bytes";
-    }
+    // Indicate we support range requests
+    responseHeaders["Accept-Ranges"] = response.headers.get("accept-ranges") || "bytes";
 
-    // Pipe the stream directly - no buffering!
-    // Use upstream status (200 or 206) to properly support Range requests
+    // Pipe the stream directly - Man-in-the-Middle complete!
     return new Response(response.body, {
       status: upstreamStatus,
       headers: responseHeaders,

@@ -291,28 +291,42 @@ export function ShakaPlayer({
         return;
       }
 
-      // Check if using Cloudflare VPN domain
-      const isProxied = isCloudflareUrl(effectiveSrc);
+      // Check if using proxy (has ?url= param)
+      const isProxied = effectiveSrc.includes('/functions/v1/stream-proxy') && 
+                        effectiveSrc.includes('?url=');
       
-      // Display URL is the same as effective (no ?url= param to extract)
-      const displayUrl = effectiveSrc;
+      // Extract the original URL from proxy for display
+      let displayUrl = effectiveSrc;
+      if (isProxied) {
+        try {
+          const url = new URL(effectiveSrc);
+          const originalUrl = url.searchParams.get('url');
+          if (originalUrl) displayUrl = decodeURIComponent(originalUrl);
+        } catch {
+          // Keep effectiveSrc if parsing fails
+        }
+      }
 
-      // Determine URL type from the proxied URL content (after ?url= decode)
+      // Determine URL type - handle extensionless URLs
+      const hasExtension = displayUrl.match(/\.(m3u8|ts|mp4|mkv)(\?|$)/i);
+      const endsWithNumber = /\/\d+(\?|$)/.test(displayUrl);
+      
       const urlType = displayUrl.includes('.m3u8') ? 'HLS (.m3u8)'
         : displayUrl.includes('.ts') ? 'MPEG-TS (.ts)'
         : displayUrl.includes('.mp4') ? 'MP4'
         : displayUrl.includes('.mkv') ? 'MKV'
+        : (endsWithNumber || !hasExtension) ? 'MPEG-TS (ingen filändelse)'
         : 'Okänd';
 
-      // Protocol of the actual request (effectiveSrc) - this is what matters for Mixed Content
+      // Protocol of the actual request
       const protocol = effectiveSrc.startsWith('https') ? 'https' : 'http';
       const pageProtocol = typeof window !== 'undefined' ? window.location.protocol : 'unknown';
 
-      const tsFormat = isTsStream(displayUrl);
+      const tsFormat = isTsStream(displayUrl) || endsWithNumber || !hasExtension;
       
-      // Detect Mixed Content issue
+      // Mixed Content only matters if NOT proxied
       const hasMixedContent = !isProxied && 
-        effectiveSrc.startsWith('http://') && 
+        displayUrl.startsWith('http://') && 
         pageProtocol === 'https:';
 
       setDiagnostics({
@@ -325,16 +339,16 @@ export function ShakaPlayer({
         shakaVersion: shaka.Player.version,
       });
 
-      // Enhanced logging for debugging
+      // Enhanced logging
       console.log('[ShakaPlayer] ─────────────────────────────');
-      console.log('[ShakaPlayer] Effective URL:', effectiveSrc);
+      console.log('[ShakaPlayer] Mode: MITM Proxy (redirects handled server-side)');
+      console.log('[ShakaPlayer] Effective URL:', effectiveSrc.substring(0, 80) + '...');
       console.log('[ShakaPlayer] Original URL:', displayUrl);
       console.log('[ShakaPlayer] Is Proxied:', isProxied ? '✅ Ja' : '❌ Nej');
-      console.log('[ShakaPlayer] Protocol:', `Sida: ${pageProtocol} / Ström: ${protocol}`);
+      console.log('[ShakaPlayer] URL Type:', urlType);
       if (hasMixedContent) {
-        console.warn('[ShakaPlayer] ⚠️ Mixed Content detected! HTTP stream on HTTPS page without proxy.');
+        console.warn('[ShakaPlayer] ⚠️ Mixed Content detected! HTTP stream without proxy.');
       }
-      console.log('[ShakaPlayer] Shaka Player version:', shaka.Player.version);
       console.log('[ShakaPlayer] ─────────────────────────────');
     }
   }, [effectiveSrc, isConfigError]);
@@ -835,9 +849,8 @@ export function ShakaPlayer({
                     <p>
                       <strong>Route:</strong>{' '}
                       <span className={diagnostics.isProxied ? 'text-green-500' : 'text-muted-foreground'}>
-                        {diagnostics.isProxied ? 'Direct Cloudflare (vpn)' : 'Direct'}
+                        {diagnostics.isProxied ? 'MITM Proxy (redirects server-side)' : 'Direct'}
                       </span>
-                      {diagnostics.isProxied && <span className="ml-2 text-green-500">✓ vpn.premiumvinted.se</span>}
                     </p>
                     <p><strong>Shaka:</strong> v{diagnostics.shakaVersion}</p>
                     <p><strong>URL:</strong> <span className="break-all">{diagnostics.streamUrl}</span></p>
