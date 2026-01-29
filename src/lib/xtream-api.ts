@@ -176,54 +176,32 @@ export function buildApiUrl(creds: XtreamCredentials, action?: string): string {
   return url;
 }
 
-// Check if we should use proxy (HTTP stream on HTTPS page)
-function shouldUseProxy(url: string): boolean {
-  if (typeof window === 'undefined') return false;
-  return url.startsWith('http://') && window.location.protocol === 'https:';
-}
-
-// Wrap URL through stream proxy using custom Cloudflare domain
-import { getProxyBaseUrl, CUSTOM_PROXY_DOMAIN } from './proxy-config';
+// Import the new Cloudflare rewrite utility
+import { transformStreamUrl, isCloudflareUrl, CLOUDFLARE_VPN_DOMAIN } from './cloudflare-rewrite';
 
 /**
- * Check if a URL is already proxied through our Edge Function
- * Returns true if URL contains the proxy endpoint path OR the custom domain
+ * Check if a URL is already using our Cloudflare domain
  */
 export function isProxiedUrl(url: string): boolean {
-  return url.includes('/functions/v1/stream-proxy') || 
-         (CUSTOM_PROXY_DOMAIN && url.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname));
+  return isCloudflareUrl(url);
 }
 
 /**
- * Wrap URL through stream proxy
- * IMPORTANT: The original URL must be passed as a query parameter, not embedded in the path
+ * Transform URL to use Cloudflare VPN domain directly (no Supabase proxy)
  * @param url - The original stream URL
  * @param options.preferM3u8 - If true, convert .ts to .m3u8 for better browser compatibility (default: true)
  */
 function proxyStreamUrl(url: string, options?: { preferM3u8?: boolean }): string {
-  // Don't double-proxy
-  if (isProxiedUrl(url)) {
-    console.log('[XtreamAPI] URL already proxied, skipping:', url.substring(0, 60) + '...');
+  // Don't double-transform
+  if (isCloudflareUrl(url)) {
+    console.log('[XtreamAPI] URL already using Cloudflare, skipping:', url.substring(0, 60) + '...');
     return url;
   }
   
-  const proxyBase = getProxyBaseUrl();
-  if (!proxyBase) {
-    console.warn('[XtreamAPI] No proxy URL configured, cannot use stream proxy');
-    return url;
-  }
-  
-  // Convert .ts to .m3u8 for better browser compatibility (unless explicitly disabled)
-  let urlToProxy = url;
-  if (options?.preferM3u8 !== false && url.endsWith('.ts')) {
-    urlToProxy = url.replace('.ts', '.m3u8');
-    console.log('[XtreamAPI] Converting .ts → .m3u8:', urlToProxy);
-  }
-  
-  const proxiedUrl = `${proxyBase}?url=${encodeURIComponent(urlToProxy)}`;
+  const transformed = transformStreamUrl(url, options);
   console.log('[XtreamAPI] Original:', url);
-  console.log('[XtreamAPI] Final Proxy URL:', proxiedUrl);
-  return proxiedUrl;
+  console.log('[XtreamAPI] Cloudflare URL:', transformed);
+  return transformed;
 }
 
 // Build stream URL for live channels
@@ -235,10 +213,10 @@ export function buildLiveStreamUrl(
   const { useProxy = true, preferTs = true, forceHttp = false } = options;
   let base = buildBaseUrl(creds);
   
-  // CRITICAL: Detect if server_url is incorrectly set to our proxy domain
-  const isServerAlreadyProxy = CUSTOM_PROXY_DOMAIN && base.includes(new URL(CUSTOM_PROXY_DOMAIN).hostname);
+  // CRITICAL: Detect if server_url is incorrectly set to our Cloudflare domain
+  const isServerAlreadyProxy = base.includes('vpn.premiumvinted.se') || base.includes('line.premiumvinted.se');
   if (isServerAlreadyProxy) {
-    console.error('[XtreamAPI] ❌ server_url är felaktigt inställd till proxy-domänen!');
+    console.error('[XtreamAPI] ❌ server_url är felaktigt inställd till Cloudflare-domänen!');
     console.error('[XtreamAPI] Din server_url:', base);
     console.error('[XtreamAPI] Gå till Inställningar → Källor och ändra till din riktiga IPTV-server');
     // Return error URL for diagnostics instead of empty string

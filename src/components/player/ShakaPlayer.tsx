@@ -14,13 +14,11 @@ import {
 import { cn } from '@/lib/utils';
 import { useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
 import {
-  isProxiedUrl,
-  extractOriginalUrl as extractOriginalFromProxy,
   buildExternalPlayerUrl,
   isTsStream,
   hasMixedContentIssue,
 } from '@/lib/stream-utils';
-import { getProxyDomainName, isUsingCustomProxy } from '@/lib/proxy-config';
+import { isCloudflareUrl, CLOUDFLARE_VPN_DOMAIN } from '@/lib/cloudflare-rewrite';
 
 /** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
 export interface StreamHttpHeaders {
@@ -265,10 +263,7 @@ export function ShakaPlayer({
   // Get URL for external players
   const externalUrl = useMemo(() => {
     if (originalStreamUrl) return originalStreamUrl;
-    if (isProxiedUrl(effectiveSrc)) {
-      const extracted = extractOriginalFromProxy(effectiveSrc);
-      if (extracted) return extracted;
-    }
+    // For Cloudflare URLs, the URL is already direct (no ?url= param to extract)
     return effectiveSrc;
   }, [effectiveSrc, originalStreamUrl]);
 
@@ -296,15 +291,11 @@ export function ShakaPlayer({
         return;
       }
 
-      // Check if proxied FIRST to determine URL type correctly
-      const isProxied = isProxiedUrl(effectiveSrc);
+      // Check if using Cloudflare VPN domain
+      const isProxied = isCloudflareUrl(effectiveSrc);
       
-      // For proxied URLs, extract the original to analyze
-      let displayUrl = effectiveSrc;
-      if (isProxied) {
-        const extracted = extractOriginalFromProxy(effectiveSrc);
-        if (extracted) displayUrl = extracted;
-      }
+      // Display URL is the same as effective (no ?url= param to extract)
+      const displayUrl = effectiveSrc;
 
       // Determine URL type from the proxied URL content (after ?url= decode)
       const urlType = displayUrl.includes('.m3u8') ? 'HLS (.m3u8)'
@@ -842,11 +833,11 @@ export function ShakaPlayer({
                       </p>
                     )}
                     <p>
-                      <strong>Proxy Route:</strong>{' '}
-                      <span className={isUsingCustomProxy() ? 'text-green-500' : 'text-muted-foreground'}>
-                        {getProxyDomainName()}
+                      <strong>Route:</strong>{' '}
+                      <span className={diagnostics.isProxied ? 'text-green-500' : 'text-muted-foreground'}>
+                        {diagnostics.isProxied ? 'Direct Cloudflare (vpn)' : 'Direct'}
                       </span>
-                      {isUsingCustomProxy() && <span className="ml-2 text-green-500">✓ Cloudflare</span>}
+                      {diagnostics.isProxied && <span className="ml-2 text-green-500">✓ vpn.premiumvinted.se</span>}
                     </p>
                     <p><strong>Shaka:</strong> v{diagnostics.shakaVersion}</p>
                     <p><strong>URL:</strong> <span className="break-all">{diagnostics.streamUrl}</span></p>
