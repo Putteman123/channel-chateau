@@ -1,8 +1,16 @@
 /**
  * Cloudflare Domain Rewrite Utility
- * Replaces IPTV provider domain with secure Cloudflare proxy domain
- * This bypasses Mixed Content issues without using Supabase Edge Functions
+ * 
+ * Routes streams through our Supabase Edge Function proxy.
+ * The proxy handles:
+ * - Following redirects internally (MITM mode)
+ * - Mixed Content issues (HTTP → HTTPS)
+ * - Extensionless URLs (assumes MPEG-TS)
+ * 
+ * NOTE: We NO LONGER convert .ts to .m3u8 - the proxy sends URLs as-is.
  */
+
+import { getProxyBaseUrl } from './proxy-config';
 
 // The secure Cloudflare domain that proxies to IPTV providers
 export const CLOUDFLARE_VPN_DOMAIN = 'https://vpn.premiumvinted.se';
@@ -14,85 +22,86 @@ const PROVIDER_DOMAINS = [
 ];
 
 /**
- * Rewrite a stream URL to use the secure Cloudflare VPN domain
- * Preserves the path (e.g., /live/user/pass/123.ts)
+ * Check if URL is using the Cloudflare VPN domain
  */
-export function rewriteToCloudflare(url: string): string {
+export function isCloudflareUrl(url: string): boolean {
+  return url.startsWith(CLOUDFLARE_VPN_DOMAIN) || 
+         url.includes('/functions/v1/stream-proxy');
+}
+
+/**
+ * Rewrite a stream URL to use the Supabase Edge Function proxy
+ * This ensures redirects are followed server-side (MITM mode)
+ * 
+ * @param url - The original stream URL
+ * @returns Proxied URL that goes through our Edge Function
+ */
+export function rewriteToProxy(url: string): string {
   if (!url) return url;
   
-  // Already using the secure domain
-  if (url.startsWith(CLOUDFLARE_VPN_DOMAIN)) {
+  // Already using the proxy
+  if (url.includes('/functions/v1/stream-proxy')) {
     return url;
   }
   
-  // Replace known provider domains
-  for (const domain of PROVIDER_DOMAINS) {
-    if (url.startsWith(domain)) {
-      const rewritten = url.replace(domain, CLOUDFLARE_VPN_DOMAIN);
-      console.log('[cloudflare-rewrite] Rewrote:', domain, '→', CLOUDFLARE_VPN_DOMAIN);
-      return rewritten;
-    }
+  // Get the proxy base URL
+  const proxyBase = getProxyBaseUrl();
+  if (!proxyBase) {
+    console.warn('[cloudflare-rewrite] No proxy URL configured');
+    return url;
   }
   
-  // For any other HTTP URL, try to replace the origin
-  if (url.startsWith('http://')) {
-    try {
-      const parsed = new URL(url);
-      const rewritten = url.replace(`http://${parsed.host}`, CLOUDFLARE_VPN_DOMAIN);
-      console.log('[cloudflare-rewrite] Rewrote HTTP origin:', parsed.host, '→', CLOUDFLARE_VPN_DOMAIN);
-      return rewritten;
-    } catch (e) {
-      console.warn('[cloudflare-rewrite] Failed to parse URL:', url);
-    }
-  }
+  // Build proxy URL - send the EXACT URL, no transformations
+  const proxyUrl = `${proxyBase}?url=${encodeURIComponent(url)}`;
+  console.log('[cloudflare-rewrite] Proxying:', url.substring(0, 60) + '...');
+  console.log('[cloudflare-rewrite] Via:', proxyUrl.substring(0, 80) + '...');
   
-  // Return original if HTTPS or parsing failed
-  return url;
+  return proxyUrl;
 }
 
 /**
- * Convert .ts to .m3u8 for better browser compatibility
- * Many IPTV providers support both formats
+ * Legacy function - now just calls rewriteToProxy
+ * @deprecated Use rewriteToProxy instead
  */
-export function convertTsToM3u8(url: string): string {
-  if (url.endsWith('.ts')) {
-    return url.replace(/\.ts$/, '.m3u8');
-  }
-  // Handle .ts with query params
-  return url.replace(/\.ts(\?|$)/, '.m3u8$1');
+export function rewriteToCloudflare(url: string): string {
+  return rewriteToProxy(url);
 }
 
 /**
- * Full transformation: rewrite domain + convert format
+ * Full transformation: route through proxy
+ * NOTE: No longer converts .ts to .m3u8 - sends exact URL
+ * 
+ * @param url - The original stream URL  
+ * @param _options - Deprecated options (preferM3u8 is ignored)
  */
-export function transformStreamUrl(url: string, options?: { preferM3u8?: boolean }): string {
-  const { preferM3u8 = true } = options || {};
+export function transformStreamUrl(url: string, _options?: { preferM3u8?: boolean }): string {
+  // Ignore preferM3u8 option - we no longer do format conversion
+  // The proxy handles everything including redirects
   
-  // Step 1: Rewrite to Cloudflare
-  let transformed = rewriteToCloudflare(url);
-  
-  // Step 2: Convert .ts to .m3u8 if preferred
-  if (preferM3u8 && (url.includes('.ts?') || url.endsWith('.ts'))) {
-    transformed = convertTsToM3u8(transformed);
-    console.log('[cloudflare-rewrite] Converted .ts → .m3u8');
-  }
-  
-  console.log('[cloudflare-rewrite] Final URL:', transformed);
+  const transformed = rewriteToProxy(url);
+  console.log('[cloudflare-rewrite] Final URL:', transformed.substring(0, 80) + '...');
   return transformed;
 }
 
 /**
- * Check if URL is using the Cloudflare VPN domain
- */
-export function isCloudflareUrl(url: string): boolean {
-  return url.startsWith(CLOUDFLARE_VPN_DOMAIN);
-}
-
-/**
  * Extract original URL from Cloudflare URL (for external player links)
- * Note: This just reverses the domain, we don't know the original provider
  */
-export function getOriginalProviderUrl(cloudflareUrl: string, originalDomain: string): string {
-  if (!isCloudflareUrl(cloudflareUrl)) return cloudflareUrl;
-  return cloudflareUrl.replace(CLOUDFLARE_VPN_DOMAIN, originalDomain);
+export function getOriginalProviderUrl(proxyUrl: string, originalDomain: string): string {
+  // If it's a proxy URL with ?url= param, extract the original
+  if (proxyUrl.includes('?url=')) {
+    try {
+      const url = new URL(proxyUrl);
+      const original = url.searchParams.get('url');
+      if (original) return decodeURIComponent(original);
+    } catch {
+      // Failed to parse, return as-is
+    }
+  }
+  
+  // Legacy: if using Cloudflare domain directly
+  if (proxyUrl.startsWith(CLOUDFLARE_VPN_DOMAIN)) {
+    return proxyUrl.replace(CLOUDFLARE_VPN_DOMAIN, originalDomain);
+  }
+  
+  return proxyUrl;
 }
