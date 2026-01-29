@@ -1,127 +1,94 @@
 
-# Plan: Fixa Proxy Fallback - Cloudflare-domänen svarar inte
+# Plan: Fixa Token-format och MITM Proxy för Fungerande Strömmar
 
 ## Problemanalys
 
-Din Cloudflare-domän `line.premiumvinted.se` returnerar **ERR_CONNECTION_REFUSED**. Detta betyder att:
-- DNS-uppsättningen kan vara fel
-- Cloudflare Worker/Route är inte konfigurerad
-- Eller domänen har gått offline
+Jag har identifierat **orsaken** till att spelaren inte fungerar trots att "Testa proxy-nedladdning" visar en fungerande ström:
 
-Appen är hårdkodad att använda denna domän utan någon fallback-logik.
+### Token-format är FEL
 
-## Lösning
+**Din fungerande URL:**
+```
+http://185.245.0.183/live/play/UjNScU5Fd3dUbE0yVGxaSVVUZDZPR2xQY1M5dlNHdGlNRnBPTW5Fdk1VaEJUWGxrU1VrdlZseEVaejA9/79662
+```
 
-Vi behöver göra appen mer robust genom att:
-1. **Falla tillbaka till Supabase-URL** om Cloudflare-domänen inte fungerar
-2. **Testa domänen vid uppstart** och välja rätt proxy automatiskt
-3. **Ge användaren möjlighet att välja** proxy-domän i inställningar
+**Token som fungerar:** `UjNScU5Fd3dUbE0yVGxaSVVUZDZPR2xQY1M5dlNHdGlNRnBPTW5Fdk1VaEJUWGxrU1VrdlZseEVaejA9`
 
-## Tekniska ändringar
+**Token som appen genererar:** `MWM4NTg2MWJhNS8xOTRjZGNhMTg4YzY=` (vilket är `base64(1c85861ba5/194cdca188c6)`)
 
-### 1. `src/lib/proxy-config.ts` - Lägg till automatisk fallback
+Leverantören använder en **dubbel base64-kodning** som ser ut att vara en hash av användaruppgifterna, inte bara `base64(username/password)`.
+
+### Servern varierar också
+
+Den fungerande URL:en använder IP-adressen `185.245.0.183` direkt - inte `line.myox.me`. Detta tyder på att IPTV-leverantören har flera servrar och den token som fungerar är bunden till en specifik server-IP.
+
+## Lösningsförslag
+
+Eftersom tokenet är genererat av leverantören (troligen via en autentiserings-API eller initial redirect), och vi inte kan återskapa det själva, är bästa lösningen att:
+
+### Alternativ A: Fånga Token från Ursprunglig Redirect (Rekommenderad)
+
+1. **Använd standard Xtream-formatet först** (`/live/username/password/streamid.ts`)
+2. **Stream-proxyn följer redirecten** och fångar den riktiga URL:en med token
+3. **Proxyn streamar från den slutliga IP-adressen** - detta fungerar redan!
+
+**Problem:** Proxyn får en 503 på den initiala URL:en. Vi behöver testa med `.ts`-format istället för Player API.
+
+### Alternativ B: Testa Original Xtream Format (Enklare)
+
+Istället för att använda `/live/play/{token}/` formatet, testa med standard Xtream:
+```
+http://line.myox.me/live/1c85861ba5/194cdca188c6/79662.ts
+```
+
+Detta kan trigga en 302 redirect till den fungerande IP-adressen som proxyn sedan följer.
+
+## Teknisk Implementation
+
+### 1. Uppdatera `buildLiveStreamUrl` i `src/lib/xtream-api.ts`
+
+Inaktivera Player API-formatet temporärt och använd standard Xtream-format:
 
 ```typescript
-// Supabase fallback URL (always works)
-export const SUPABASE_PROXY_URL = import.meta.env.VITE_SUPABASE_URL 
-  ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-proxy`
-  : '';
-
-// Custom domain (may not always be available)
-export const CUSTOM_PROXY_DOMAIN = 'https://line.premiumvinted.se';
-
-// Cache for domain availability
-let customDomainAvailable: boolean | null = null;
-
-// Test if custom domain is reachable
-export async function testCustomDomain(): Promise<boolean> {
-  if (customDomainAvailable !== null) return customDomainAvailable;
+export function buildLiveStreamUrl(
+  creds: XtreamCredentials, 
+  streamId: number, 
+  options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean; usePlayerApi?: boolean } = {}
+): string {
+  const { useProxy = true, preferTs = true, forceHttp = true, usePlayerApi = false } = options;
+  // ^^^ Sätt usePlayerApi = false som default
   
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    
-    const response = await fetch(
-      `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`,
-      { method: 'HEAD', signal: controller.signal }
-    );
-    clearTimeout(timeout);
-    
-    customDomainAvailable = response.ok || response.status === 400; // 400 = missing url param = working
-    return customDomainAvailable;
-  } catch {
-    customDomainAvailable = false;
-    return false;
-  }
-}
-
-// Get working proxy URL with automatic fallback
-export async function getWorkingProxyBaseUrl(): Promise<string> {
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN) {
-    const isAvailable = await testCustomDomain();
-    if (isAvailable) {
-      return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
-    }
-    console.warn('[proxy-config] Custom domain unavailable, falling back to Supabase');
-  }
-  return SUPABASE_PROXY_URL;
-}
-
-// Sync version for immediate use (uses cached result or Supabase)
-export function getProxyBaseUrl(): string {
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN && customDomainAvailable === true) {
-    return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
-  }
-  return SUPABASE_PROXY_URL;
+  // ... resten av logiken använder standard /live/username/password/streamid.ts
 }
 ```
 
-### 2. `supabase/functions/stream-proxy/index.ts` - Dynamisk proxy-domän
+### 2. Verifiera att stream-proxy följer redirects korrekt
 
-Ändra den hårdkodade `CUSTOM_PROXY_DOMAIN` till att använda `req.url` origin:
+Kontrollera att `redirect: 'follow'` verkligen följer 302-redirects till den slutliga IP-adressen.
 
-```typescript
-// Dynamically determine proxy domain from request
-const requestUrl = new URL(req.url);
-const proxyBase = `${requestUrl.origin}/functions/v1/stream-proxy`;
-```
+### 3. Lägg till diagnostik-loggning i proxyn
 
-Detta gör att oavsett vilken domän som anropas (Cloudflare eller Supabase), kommer segment-URL:er att gå via samma domän.
-
-### 3. Frontend - Testa proxy vid sidladdning
-
-I `App.tsx` eller `StreamContext`, lägg till:
-
-```typescript
-useEffect(() => {
-  // Pre-test proxy availability
-  testCustomDomain().then(available => {
-    console.log('[App] Custom proxy domain available:', available);
-  });
-}, []);
-```
+Logga den slutliga URL:en efter redirect för att se om vi når rätt server.
 
 ## Filer som ändras
 
 | Fil | Ändring |
 |-----|---------|
-| `src/lib/proxy-config.ts` | Lägg till fallback-logik och domain-test |
-| `supabase/functions/stream-proxy/index.ts` | Använd dynamisk domän från request URL |
-| `src/App.tsx` eller `src/contexts/StreamContext.tsx` | Testa proxy vid uppstart |
+| `src/lib/xtream-api.ts` | Sätt `usePlayerApi = false` som default, använd standard `.ts` format |
+| `supabase/functions/stream-proxy/index.ts` | Förbättra loggning av redirect-kedjan |
 
-## Alternativ: Snabb fix (enklaste lösningen)
+## Alternativ Om Detta Inte Fungerar
 
-Om Cloudflare-domänen inte behövs just nu, kan vi helt enkelt **stänga av den anpassade domänen**:
+Om standard-formatet också returnerar 503/458:
 
-```typescript
-// proxy-config.ts
-export const USE_CUSTOM_PROXY = false; // <-- Ändra till false
-```
+1. **Externt Token-API**: Vissa leverantörer har en `/get_token`-endpoint som returnerar det korrekta tokenet
+2. **Manuell Token-input**: Låt användaren ange den fungerande URL:en direkt (copy/paste från "Testa proxy-nedladdning")
+3. **Direct IP Mode**: Låt användaren konfigurera server-IP (`185.245.0.183`) separat från DNS-namnet
 
-Detta gör att alla anrop går via Supabase direkt, som alltid fungerar.
+## Sammanfattning
 
-## Rekommendation
+Det huvudsakliga problemet är att **Player API-tokenet genereras fel** av vår kod. Lösningen är att:
 
-**Snabbaste lösningen**: Stäng av `USE_CUSTOM_PROXY` tills Cloudflare-domänen är korrekt konfigurerad.
-
-**Långsiktigt robust**: Implementera automatisk fallback så appen fungerar oavsett domänstatus.
+1. **Först testa** med standard Xtream-format (`.ts`-filer) via proxyn
+2. Proxyn följer redan redirects - det bör fungera om ursprungsförfrågan lyckas
+3. Om det fortfarande misslyckas behöver vi undersöka leverantörens token-generering
