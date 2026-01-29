@@ -206,13 +206,30 @@ function proxyStreamUrl(url: string): string {
   return transformed;
 }
 
+/**
+ * Build Player API URL format - uses /live/play/{token}/{stream_id}
+ * This format bypasses IP blocking that affects the standard Xtream format
+ */
+function buildPlayerApiUrl(creds: XtreamCredentials, streamId: number): string {
+  // Encode credentials as base64 token (same format as standard base64 encoding)
+  const credString = `${creds.username}/${creds.password}`;
+  const token = btoa(credString);
+  
+  // Get server from credentials
+  let server = creds.serverUrl.trim();
+  server = server.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  
+  // Build Player API URL - always HTTP since provider redirects to direct IP
+  return `http://${server}/live/play/${token}/${streamId}`;
+}
+
 // Build stream URL for live channels
 export function buildLiveStreamUrl(
   creds: XtreamCredentials, 
   streamId: number, 
-  options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean } = {}
+  options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean; usePlayerApi?: boolean } = {}
 ): string {
-  const { useProxy = true, preferTs = true, forceHttp = false } = options;
+  const { useProxy = true, preferTs = true, forceHttp = false, usePlayerApi = true } = options;
   let base = buildBaseUrl(creds);
   
   // CRITICAL: Detect if server_url is incorrectly set to our proxy domain
@@ -222,14 +239,25 @@ export function buildLiveStreamUrl(
     return 'error://server_url_is_proxy_domain';
   }
   
-  // Force HTTP protocol if requested
+  // NEW: Use Player API format which bypasses standard IP blocking
+  if (usePlayerApi) {
+    const playerApiUrl = buildPlayerApiUrl(creds, streamId);
+    console.log('[XtreamAPI] Using Player API format:', playerApiUrl.substring(0, 60) + '...');
+    
+    // Proxy handles redirects (MITM mode) - critical for Mixed Content
+    if (useProxy) {
+      return proxyStreamUrl(playerApiUrl);
+    }
+    return playerApiUrl;
+  }
+  
+  // Force HTTP protocol if requested (fallback to standard Xtream format)
   if (forceHttp && base.startsWith('https://')) {
     base = base.replace('https://', 'http://');
     console.log('[XtreamAPI] Forced HTTP for live stream');
   }
   
-  // Build stream URL with chosen extension
-  // NOTE: We no longer convert .ts to .m3u8 - the proxy handles redirects internally
+  // Build stream URL with chosen extension (standard Xtream format - often blocked)
   const extension = preferTs ? 'ts' : 'm3u8';
   const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
