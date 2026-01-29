@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar } from 'lucide-react';
+import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar, Wand2 } from 'lucide-react';
 import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import * as XtreamAPI from '@/lib/xtream-api';
 import { SubscriptionBadge } from '@/components/subscription/SubscriptionBadge';
 import { parseXtreamExpDate } from '@/lib/subscription-utils';
+import { buildXMLTVUrl } from '@/lib/xmltv-parser';
 
 // Xtream schema - with validation to prevent using proxy domain as server URL
 const xtreamSchema = z.object({
@@ -38,6 +39,7 @@ const xtreamSchema = z.object({
     ),
   username: z.string().min(1, 'Användarnamn krävs'),
   password: z.string().min(1, 'Lösenord krävs'),
+  custom_epg_url: z.string().optional(),
 });
 
 // M3U schema
@@ -65,6 +67,7 @@ export default function Sources() {
       server_url: '',
       username: '',
       password: '',
+      custom_epg_url: '',
     },
   });
 
@@ -86,6 +89,7 @@ export default function Sources() {
           server_url: editingSource.server_url || '',
           username: editingSource.username || '',
           password: editingSource.password || '',
+          custom_epg_url: editingSource.custom_epg_url || '',
         });
         setAddSourceType('xtream');
       } else {
@@ -101,9 +105,19 @@ export default function Sources() {
   }, [editingSource, xtreamForm, m3uForm]);
 
   const resetForms = () => {
-    xtreamForm.reset({ name: '', server_url: '', username: '', password: '' });
+    xtreamForm.reset({ name: '', server_url: '', username: '', password: '', custom_epg_url: '' });
     m3uForm.reset({ name: '', m3u_url: '', expires_at: '' });
     setConnectionStatus('idle');
+  };
+
+  // Generate XMLTV URL from current form values
+  const generateEpgUrl = () => {
+    const values = xtreamForm.getValues();
+    if (!values.server_url || !values.username || !values.password) {
+      return;
+    }
+    const epgUrl = buildXMLTVUrl(values.server_url, values.username, values.password);
+    xtreamForm.setValue('custom_epg_url', epgUrl);
   };
 
   const [lastAuthResult, setLastAuthResult] = useState<XtreamAPI.XtreamAuthInfo | null>(null);
@@ -199,6 +213,7 @@ export default function Sources() {
         server_url: data.server_url,
         username: data.username,
         password: data.password,
+        custom_epg_url: data.custom_epg_url || null,
         is_active: sources.length === 0,
         expires_at: expiresAt,
       });
@@ -245,6 +260,7 @@ export default function Sources() {
         server_url: data.server_url,
         username: data.username,
         password: data.password,
+        custom_epg_url: data.custom_epg_url || null,
         ...(expiresAt && { expires_at: expiresAt }),
       });
       setEditingSource(null);
@@ -389,6 +405,38 @@ export default function Sources() {
                           <FormControl>
                             <Input type="password" placeholder="••••••••" {...field} />
                           </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Custom EPG URL Field */}
+                    <FormField
+                      control={xtreamForm.control}
+                      name="custom_epg_url"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Alternativ EPG URL (Valfritt)</FormLabel>
+                          <div className="flex gap-2">
+                            <FormControl>
+                              <Input 
+                                placeholder="http://domain/xmltv.php?username=..." 
+                                {...field} 
+                              />
+                            </FormControl>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={generateEpgUrl}
+                              title="Generera från inloggning"
+                            >
+                              <Wand2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <FormDescription>
+                            XMLTV-länk för utökad programguide. Klicka på trollstaven för att generera automatiskt.
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -576,6 +624,38 @@ export default function Sources() {
                       <FormControl>
                         <Input type="password" placeholder="••••••••" {...field} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Custom EPG URL Field */}
+                <FormField
+                  control={xtreamForm.control}
+                  name="custom_epg_url"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Alternativ EPG URL (Valfritt)</FormLabel>
+                      <div className="flex gap-2">
+                        <FormControl>
+                          <Input 
+                            placeholder="http://domain/xmltv.php?username=..." 
+                            {...field} 
+                          />
+                        </FormControl>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={generateEpgUrl}
+                          title="Generera från inloggning"
+                        >
+                          <Wand2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <FormDescription>
+                        XMLTV-länk för utökad programguide. Klicka på trollstaven för att generera automatiskt.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

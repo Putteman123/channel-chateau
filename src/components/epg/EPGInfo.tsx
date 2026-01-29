@@ -1,14 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { Clock, Calendar } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
 import * as XtreamAPI from '@/lib/xtream-api';
+import { useXMLTVEpg } from '@/hooks/useXMLTVEpg';
 
 interface EPGInfoProps {
   credentials: XtreamAPI.XtreamCredentials;
   streamId: number;
+  channelName?: string;
+  epgChannelId?: string;
+  /** Custom XMLTV EPG URL (prioritized over Xtream API) */
+  customEpgUrl?: string | null;
   compact?: boolean;
 }
 
@@ -34,8 +38,22 @@ function formatTime(date: Date): string {
   return date.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function EPGInfo({ credentials, streamId, compact = false }: EPGInfoProps) {
-  const { data: epgData, isLoading, error } = useQuery({
+export function EPGInfo({ 
+  credentials, 
+  streamId, 
+  channelName = '',
+  epgChannelId,
+  customEpgUrl,
+  compact = false 
+}: EPGInfoProps) {
+  // XMLTV EPG (prioritized if custom URL is provided)
+  const xmltvEpg = useXMLTVEpg({
+    epgUrl: customEpgUrl,
+    enabled: !!customEpgUrl,
+  });
+
+  // Standard Xtream EPG (fallback)
+  const { data: xtreamEpgData, isLoading: xtreamLoading, error: xtreamError } = useQuery({
     queryKey: ['epg', credentials.serverUrl, streamId],
     queryFn: async () => {
       const data = await XtreamAPI.getEPG(credentials, streamId);
@@ -43,7 +61,73 @@ export function EPGInfo({ credentials, streamId, compact = false }: EPGInfoProps
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
+    // Only fetch Xtream EPG if no custom XMLTV URL
+    enabled: !customEpgUrl,
   });
+
+  // Determine which EPG source to use
+  const isLoading = customEpgUrl ? xmltvEpg.isLoading : xtreamLoading;
+  const error = customEpgUrl ? xmltvEpg.error : xtreamError;
+
+  // Build programs array from either source
+  const now = new Date();
+  let programs: EPGProgram[] = [];
+
+  if (customEpgUrl && xmltvEpg.data) {
+    // Use XMLTV data
+    const xmltvPrograms = xmltvEpg.getProgramsForChannel(streamId, epgChannelId, channelName);
+    
+    programs = xmltvPrograms
+      .map((prog) => {
+        const isLive = now >= prog.start && now <= prog.end;
+        
+        let progress = 0;
+        if (isLive) {
+          const total = prog.end.getTime() - prog.start.getTime();
+          const elapsed = now.getTime() - prog.start.getTime();
+          progress = Math.min(100, Math.max(0, (elapsed / total) * 100));
+        } else if (now > prog.end) {
+          progress = 100;
+        }
+
+        return {
+          title: prog.title,
+          start: prog.start,
+          end: prog.end,
+          description: prog.description,
+          isLive,
+          progress,
+        };
+      })
+      .filter(p => p.end > now); // Only show current and future programs
+  } else if (xtreamEpgData && xtreamEpgData.length > 0) {
+    // Use Xtream API data
+    programs = xtreamEpgData
+      .map((listing) => {
+        const start = parseEPGDate(listing.start_timestamp || listing.start);
+        const end = parseEPGDate(listing.stop_timestamp || listing.end);
+        const isLive = now >= start && now <= end;
+        
+        let progress = 0;
+        if (isLive) {
+          const total = end.getTime() - start.getTime();
+          const elapsed = now.getTime() - start.getTime();
+          progress = Math.min(100, Math.max(0, (elapsed / total) * 100));
+        } else if (now > end) {
+          progress = 100;
+        }
+
+        return {
+          title: listing.title,
+          start,
+          end,
+          description: listing.description,
+          isLive,
+          progress,
+        };
+      })
+      .filter(p => p.end > now);
+  }
 
   if (isLoading) {
     return compact ? (
@@ -56,37 +140,11 @@ export function EPGInfo({ credentials, streamId, compact = false }: EPGInfoProps
     );
   }
 
-  if (error || !epgData || epgData.length === 0) {
+  if (error || programs.length === 0) {
     return compact ? (
       <span className="text-xs text-muted-foreground">Ingen programinfo</span>
     ) : null;
   }
-
-  const now = new Date();
-  
-  const programs: EPGProgram[] = epgData.map((listing) => {
-    const start = parseEPGDate(listing.start_timestamp || listing.start);
-    const end = parseEPGDate(listing.stop_timestamp || listing.end);
-    const isLive = now >= start && now <= end;
-    
-    let progress = 0;
-    if (isLive) {
-      const total = end.getTime() - start.getTime();
-      const elapsed = now.getTime() - start.getTime();
-      progress = Math.min(100, Math.max(0, (elapsed / total) * 100));
-    } else if (now > end) {
-      progress = 100;
-    }
-
-    return {
-      title: listing.title,
-      start,
-      end,
-      description: listing.description,
-      isLive,
-      progress,
-    };
-  }).filter(p => p.end > now); // Only show current and future programs
 
   const currentProgram = programs.find(p => p.isLive);
   const upcomingPrograms = programs.filter(p => !p.isLive).slice(0, 5);
@@ -116,6 +174,13 @@ export function EPGInfo({ credentials, streamId, compact = false }: EPGInfoProps
 
   return (
     <div className="space-y-4">
+      {/* Source indicator */}
+      {customEpgUrl && (
+        <div className="text-xs text-muted-foreground">
+          📺 XMLTV EPG
+        </div>
+      )}
+
       {/* Currently Playing */}
       {currentProgram && (
         <div className="rounded-lg bg-card p-4">

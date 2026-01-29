@@ -127,6 +127,7 @@ export type Database = {
       stream_sources: {
         Row: {
           created_at: string
+          custom_epg_url: string | null
           expires_at: string | null
           force_http_live: boolean
           id: string
@@ -146,6 +147,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          custom_epg_url?: string | null
           expires_at?: string | null
           force_http_live?: boolean
           id?: string
@@ -165,6 +167,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          custom_epg_url?: string | null
           expires_at?: string | null
           force_http_live?: boolean
           id?: string

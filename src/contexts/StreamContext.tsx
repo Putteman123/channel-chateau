@@ -11,6 +11,8 @@ interface StreamContextType {
   credentials: XtreamCredentials | null;
   // For M3U sources
   m3uUrl: string | null;
+  // EPG
+  customEpgUrl: string | null;
   // Stream preferences
   preferTsLive: boolean;
   preferTsVod: boolean;
@@ -73,6 +75,7 @@ export function StreamProvider({ children }: { children: ReactNode }) {
       sourceType,
       credentials,
       m3uUrl,
+      customEpgUrl: currentSource?.custom_epg_url ?? null,
       preferTsLive: currentSource?.prefer_ts_live ?? true,
       preferTsVod: currentSource?.prefer_ts_vod ?? true,
       useProxy: currentSource?.use_proxy ?? true,

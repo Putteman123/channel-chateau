@@ -11,6 +11,7 @@ interface EPGDrawerProps {
   onOpenChange: (open: boolean) => void;
   channel: XtreamAPI.XtreamChannel | null;
   credentials: XtreamAPI.XtreamCredentials | null;
+  customEpgUrl?: string | null;
   onPlay: () => void;
 }
 
@@ -19,6 +20,7 @@ export function EPGDrawer({
   onOpenChange,
   channel,
   credentials,
+  customEpgUrl,
   onPlay,
 }: EPGDrawerProps) {
   if (!channel || !credentials) return null;
@@ -49,6 +51,9 @@ export function EPGDrawer({
           <EPGInfo
             credentials={credentials}
             streamId={channel.stream_id}
+            channelName={channel.name}
+            epgChannelId={channel.epg_channel_id}
+            customEpgUrl={customEpgUrl}
             compact={false}
           />
         </div>

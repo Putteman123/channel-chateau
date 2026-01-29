@@ -16,6 +16,8 @@ export interface StreamSource {
   password: string | null;
   // M3U fields
   m3u_url: string | null;
+  // EPG fields
+  custom_epg_url: string | null; // Optional XMLTV EPG URL
   // Common fields
   is_active: boolean;
   prefer_ts_live: boolean;
@@ -34,6 +36,7 @@ export interface AddXtreamSource {
   server_url: string;
   username: string;
   password: string;
+  custom_epg_url?: string | null;
   is_active?: boolean;
   prefer_ts_live?: boolean;
   prefer_ts_vod?: boolean;
