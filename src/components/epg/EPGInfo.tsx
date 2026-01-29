@@ -151,14 +151,23 @@ export function EPGInfo({
 
   if (compact) {
     return (
-      <div className="space-y-1">
+      <div className="space-y-2">
         {currentProgram && (
-          <div className="flex items-center gap-2">
-            <span className="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-              NU
-            </span>
-            <span className="line-clamp-1 text-xs">{currentProgram.title}</span>
-          </div>
+          <>
+            <div className="flex items-center gap-2">
+              <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                NU
+              </span>
+              <span className="line-clamp-1 text-xs font-medium text-foreground">{currentProgram.title}</span>
+            </div>
+            {/* IPTVX-style progress bar in accent color */}
+            <div className="h-0.5 w-full overflow-hidden rounded-full bg-muted">
+              <div 
+                className="h-full bg-primary transition-all duration-500"
+                style={{ width: `${currentProgram.progress}%` }}
+              />
+            </div>
+          </>
         )}
         {upcomingPrograms[0] && (
           <div className="flex items-center gap-2 text-muted-foreground">

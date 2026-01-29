@@ -14,7 +14,7 @@ function TvModeIndicator() {
   if (!isTvMode) return null;
   
   return (
-    <div className="tv-mode-indicator flex items-center gap-1.5">
+    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg">
       <Tv className="h-3.5 w-3.5" />
       <span>TV-läge</span>
     </div>

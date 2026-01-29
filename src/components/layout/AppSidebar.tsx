@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminCheck } from '@/hooks/useAdminCheck';
 import { useStream } from '@/contexts/StreamContext';
+import { StreamifyLogo } from '@/components/brand/StreamifyLogo';
 import {
   Sidebar,
   SidebarContent,
@@ -52,18 +53,12 @@ export function AppSidebar() {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-border bg-sidebar-background">
+    <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
       <SidebarHeader className="p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <Tv className="h-6 w-6 text-primary-foreground" />
-          </div>
-          {!collapsed && (
-            <span className="font-display text-2xl tracking-wider text-foreground">
-              STREAMIFY
-            </span>
-          )}
-        </div>
+        <StreamifyLogo 
+          collapsed={collapsed} 
+          size={collapsed ? 'sm' : 'md'} 
+        />
       </SidebarHeader>
 
       <SidebarContent>

@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Tv, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { StreamifyLogo } from '@/components/brand/StreamifyLogo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,15 +80,18 @@ export function AuthForm() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-background" />
+      {/* Cinematic gradient background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
       
-      <Card className="relative z-10 w-full max-w-md border-border bg-card/90 backdrop-blur">
+      <Card className="relative z-10 w-full max-w-md border-border bg-card/95 shadow-2xl backdrop-blur-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary">
-            <Tv className="h-8 w-8 text-primary-foreground" />
+          <div className="mx-auto mb-4">
+            <StreamifyLogo size="lg" collapsed={false} />
           </div>
-          <CardTitle className="font-display text-3xl tracking-wide">STREAMIFY</CardTitle>
-          <CardDescription>Din personliga streaming-plattform</CardDescription>
+          <CardDescription className="text-muted-foreground">
+            Din personliga streaming-plattform
+          </CardDescription>
         </CardHeader>
         
         <CardContent>

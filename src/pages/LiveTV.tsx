@@ -27,7 +27,7 @@ type UnifiedChannel = XtreamAPI.XtreamChannel | M3UChannel;
 
 export default function LiveTV() {
   const { t } = useTranslation();
-  const { activeSource, sourceType, credentials, m3uUrl, preferTsLive, forceHttpLive, useProxy } = useStream();
+  const { activeSource, sourceType, credentials, m3uUrl, preferTsLive, forceHttpLive, useProxy, customEpgUrl } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { isLandscapeMobile } = useOrientation();
   
@@ -295,6 +295,7 @@ export default function LiveTV() {
           onOpenChange={() => setSelectedChannel(null)}
           channel={selectedChannel}
           credentials={credentials}
+          customEpgUrl={customEpgUrl}
           onPlay={() => selectedChannel && handlePlayChannel(selectedChannel)}
         />
       )}
