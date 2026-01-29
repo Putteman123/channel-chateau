@@ -393,6 +393,7 @@ export function ShakaPlayer({
     playerRef.current = player;
 
     // Configure player for resilience
+    // IMPORTANT: Disable segment prefetch to avoid HEAD requests that waste rate-limits
     player.configure({
       streaming: {
         retryParameters: {
@@ -408,6 +409,12 @@ export function ShakaPlayer({
         stallEnabled: true,
         stallThreshold: 1,
         stallSkip: 0.1,
+        // Disable prefetch to avoid extra HEAD requests that consume rate-limits
+        segmentPrefetchLimit: 0,
+        // Disable low-latency mode to reduce request frequency
+        lowLatencyMode: false,
+        // Increase update period to reduce manifest requests
+        updateIntervalSeconds: 10,
       },
       manifest: {
         retryParameters: {
@@ -417,6 +424,8 @@ export function ShakaPlayer({
           fuzzFactor: 0.5,
           timeout: 30000,
         },
+        // Disable availability window for live - reduces requests
+        availabilityWindowOverride: 120,
       },
       drm: {
         retryParameters: {
