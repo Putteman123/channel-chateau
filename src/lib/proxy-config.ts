@@ -8,8 +8,9 @@ export const SUPABASE_PROXY_URL = import.meta.env.VITE_SUPABASE_URL
   ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-proxy`
   : '';
 
-// Custom Cloudflare domain for proxying streams (may not always be available)
-export const CUSTOM_PROXY_DOMAIN = 'https://line.premiumvinted.se';
+// Custom Cloudflare VPN domain for Direct Tunneling (IPTV Smarters method)
+// Note: This domain proxies DIRECTLY to the IPTV provider, NOT through Edge Functions
+export const CUSTOM_PROXY_DOMAIN = 'https://vpn.premiumvinted.se';
 
 // Whether to prefer custom domain (will auto-fallback if unavailable)
 export const USE_CUSTOM_PROXY = true;
@@ -22,7 +23,7 @@ let customDomainAvailable: boolean | null = null;
 let testInProgress: Promise<boolean> | null = null;
 
 /**
- * Test if custom domain is reachable
+ * Test if VPN tunnel domain is reachable
  * Uses a short timeout to avoid blocking the app
  * Caches the result for the session
  */
@@ -42,23 +43,26 @@ export async function testCustomDomain(): Promise<boolean> {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000); // 3 second timeout
       
+      // For VPN tunnel, test root path with no-cors mode
+      // IPTV servers don't set CORS headers, but video elements don't need them
       const response = await fetch(
-        `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`,
+        `${CUSTOM_PROXY_DOMAIN}/`,
         { 
           method: 'HEAD', 
           signal: controller.signal,
-          mode: 'cors',
+          mode: 'no-cors', // Use no-cors since IPTV servers don't support CORS
         }
       );
       clearTimeout(timeout);
       
-      // 400 = missing url param = proxy is working
-      // 200 = also working
-      customDomainAvailable = response.ok || response.status === 400;
-      console.log(`[proxy-config] Custom domain test: ${customDomainAvailable ? 'AVAILABLE' : 'UNAVAILABLE'} (HTTP ${response.status})`);
+      // With no-cors mode, we get an opaque response (status=0, type=opaque)
+      // This is expected and means the server is reachable
+      // Any response (even opaque) means the tunnel is working
+      customDomainAvailable = true;
+      console.log(`[proxy-config] VPN tunnel test: AVAILABLE (opaque response - IPTV servers don't support CORS)`);
       return customDomainAvailable;
     } catch (err) {
-      console.warn('[proxy-config] Custom domain unavailable:', err instanceof Error ? err.message : err);
+      console.warn('[proxy-config] VPN tunnel unavailable:', err instanceof Error ? err.message : err);
       customDomainAvailable = false;
       return false;
     } finally {
@@ -81,39 +85,44 @@ export function resetDomainCache(): void {
 /**
  * Get working proxy URL with automatic fallback (async version)
  * Tests the custom domain first, falls back to Supabase if unavailable
+ * NOTE: This returns the SUPABASE proxy URL, not the VPN tunnel
+ * Use getVpnTunnelDomain() for Direct Tunneling
  */
 export async function getWorkingProxyBaseUrl(): Promise<string> {
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN) {
-    const isAvailable = await testCustomDomain();
-    if (isAvailable) {
-      return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
-    }
-    console.warn('[proxy-config] Custom domain unavailable, using Supabase fallback');
-  }
+  // Always return Supabase proxy for API calls
+  // Direct Tunneling is handled separately by cloudflare-rewrite.ts
   return SUPABASE_PROXY_URL;
 }
 
 /**
  * Get proxy base URL (sync version)
- * Uses cached test result if available, otherwise falls back to Supabase
+ * Returns Supabase proxy URL for API calls
+ * Direct Tunneling for video streams is handled by cloudflare-rewrite.ts
  */
 export function getProxyBaseUrl(): string {
-  // If custom proxy is enabled AND domain test passed, use custom
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN && customDomainAvailable === true) {
-    return `${CUSTOM_PROXY_DOMAIN}/functions/v1/stream-proxy`;
-  }
-  
-  // If we haven't tested yet, still use Supabase for safety
-  // (the async test will update this for future calls)
   return SUPABASE_PROXY_URL;
+}
+
+/**
+ * Get VPN tunnel domain for Direct Tunneling video streams
+ */
+export function getVpnTunnelDomain(): string {
+  return CUSTOM_PROXY_DOMAIN;
+}
+
+/**
+ * Check if VPN tunnel is available
+ */
+export function isVpnTunnelAvailable(): boolean {
+  return customDomainAvailable === true;
 }
 
 /**
  * Get the domain name for display purposes
  */
 export function getProxyDomainName(): string {
-  // Return actual domain being used based on availability
-  if (USE_CUSTOM_PROXY && CUSTOM_PROXY_DOMAIN && customDomainAvailable === true) {
+  // Return VPN tunnel domain if available (for video streams)
+  if (customDomainAvailable === true) {
     try {
       return new URL(CUSTOM_PROXY_DOMAIN).hostname;
     } catch {
@@ -121,6 +130,7 @@ export function getProxyDomainName(): string {
     }
   }
   
+  // Otherwise return Supabase
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   if (supabaseUrl) {
     try {
