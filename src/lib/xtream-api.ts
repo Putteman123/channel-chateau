@@ -229,7 +229,8 @@ export function buildLiveStreamUrl(
   streamId: number, 
   options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean; usePlayerApi?: boolean } = {}
 ): string {
-  const { useProxy = true, preferTs = true, forceHttp = false, usePlayerApi = true } = options;
+  // CHANGED: usePlayerApi = false as default - standard Xtream format works better with redirect following
+  const { useProxy = true, preferTs = true, forceHttp = true, usePlayerApi = false } = options;
   let base = buildBaseUrl(creds);
   
   // CRITICAL: Detect if server_url is incorrectly set to our proxy domain
@@ -239,31 +240,31 @@ export function buildLiveStreamUrl(
     return 'error://server_url_is_proxy_domain';
   }
   
-  // NEW: Use Player API format which bypasses standard IP blocking
+  // Player API format (optional) - may be needed for specific providers
   if (usePlayerApi) {
     const playerApiUrl = buildPlayerApiUrl(creds, streamId);
     console.log('[XtreamAPI] Using Player API format:', playerApiUrl.substring(0, 60) + '...');
     
-    // Proxy handles redirects (MITM mode) - critical for Mixed Content
     if (useProxy) {
       return proxyStreamUrl(playerApiUrl);
     }
     return playerApiUrl;
   }
   
-  // Force HTTP protocol if requested (fallback to standard Xtream format)
+  // Force HTTP protocol for live streams (many providers block HTTPS from datacenters)
   if (forceHttp && base.startsWith('https://')) {
     base = base.replace('https://', 'http://');
     console.log('[XtreamAPI] Forced HTTP for live stream');
   }
   
-  // Build stream URL with chosen extension (standard Xtream format - often blocked)
+  // Build stream URL with chosen extension (standard Xtream format)
+  // The proxy will follow any 302 redirects to the final IP/token URL
   const extension = preferTs ? 'ts' : 'm3u8';
   const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
-  // Use proxy if enabled - handles Mixed Content and redirects (MITM mode)
+  // Use proxy (MITM mode) - critical for Mixed Content and redirect handling
   if (useProxy) {
-    console.log('[XtreamAPI] Using proxy for:', directUrl.substring(0, 60) + '...');
+    console.log('[XtreamAPI] Using standard Xtream format + MITM proxy:', directUrl.substring(0, 60) + '...');
     return proxyStreamUrl(directUrl);
   }
   

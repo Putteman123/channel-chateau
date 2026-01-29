@@ -130,10 +130,12 @@ serve(async (req) => {
     let response: Response | null = null;
     let lastError: Error | null = null;
     let finalUrl: string = decodedUrl;
+    let redirectChain: string[] = [];
 
     for (const urlToTry of urlsToTry) {
       try {
-        console.log(`[stream-proxy] Trying: ${urlToTry.substring(0, 60)}...`);
+        console.log(`[stream-proxy] Trying: ${redactUrl(urlToTry).substring(0, 80)}...`);
+        redirectChain = [urlToTry];
         
         // CRITICAL: redirect: 'follow' makes the proxy follow redirects INTERNALLY
         // The client never sees the 302 - we handle it server-side (Man-in-the-Middle)
@@ -142,25 +144,29 @@ serve(async (req) => {
           redirect: "follow", // Follow redirects internally - never send to client!
         });
 
-        // Log the final URL after redirects
+        // Log the final URL after redirects - this is KEY for debugging
         if (response.url !== urlToTry) {
-          console.log(`[stream-proxy] Followed redirect to: ${response.url.substring(0, 80)}...`);
+          redirectChain.push(response.url);
+          console.log(`[stream-proxy] ✅ Redirect chain: ${redirectChain.length} hops`);
+          console.log(`[stream-proxy] Final URL after redirect: ${redactUrl(response.url).substring(0, 100)}...`);
           finalUrl = response.url;
+        } else {
+          console.log(`[stream-proxy] No redirect, using original URL`);
         }
 
         // Accept 200 OK and 206 Partial Content (for Range requests)
         if (response.ok || response.status === 206) {
-          console.log(`[stream-proxy] Success (HTTP ${response.status}) - Final URL: ${finalUrl.substring(0, 60)}...`);
+          console.log(`[stream-proxy] ✅ Success (HTTP ${response.status}) from: ${redactUrl(finalUrl).substring(0, 80)}...`);
           break;
         } else {
           const statusCode = response.status;
-          console.error(`[stream-proxy] HTTP ${statusCode} from: ${urlToTry.substring(0, 60)}...`);
+          console.error(`[stream-proxy] ❌ HTTP ${statusCode} from: ${redactUrl(urlToTry).substring(0, 80)}...`);
           lastError = new Error(`HTTP ${statusCode}`);
           (lastError as any).httpStatus = statusCode;
           response = null;
         }
       } catch (err) {
-        console.error(`[stream-proxy] Connection failed: ${err}`);
+        console.error(`[stream-proxy] ❌ Connection failed: ${err}`);
         lastError = err instanceof Error ? err : new Error(String(err));
         response = null;
       }
