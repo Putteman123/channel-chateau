@@ -73,13 +73,21 @@ function diagnoseError(
   const isHttpSource = src.startsWith('http://');
   const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
 
-  // HTTP 551 - IP-locked/tokenized stream
-  if (httpStatus === 551 || errorMessage?.includes('551') || errorMessage?.includes('IP-locked')) {
+  // IP-locked/tokenized stream
+  // stream-proxy returns 423 (standard) while preserving upstream 551 semantics.
+  if (
+    httpStatus === 551 ||
+    httpStatus === 423 ||
+    errorMessage?.includes('551') ||
+    errorMessage?.includes('423') ||
+    errorMessage?.includes('IP-locked')
+  ) {
     return {
       type: 'network',
       message: 'Strömmen är IP-låst',
-      details: 'HTTP 551 - Länken är genererad för en specifik IP-adress och fungerar inte via proxy. Använd direktuppspelning eller öppna i VLC på din dator.',
+      details: 'Strömmen är tokeniserad/IP-låst och fungerar inte via proxy från datacenter. Använd direktuppspelning (VPN-länk) eller öppna i VLC på din dator.',
       code: errorCode,
+      // Display as 551 in UI to match provider semantics even if proxy returns 423.
       httpStatus: 551,
     };
   }
@@ -230,6 +238,7 @@ export function ShakaPlayer({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showDirectPlayback, setShowDirectPlayback] = useState(false);
   const isMountedRef = useRef(true);
 
   const { isTvMode } = useSpatialNavigation();
@@ -277,6 +286,14 @@ export function ShakaPlayer({
     // For Cloudflare URLs, the URL is already direct (no ?url= param to extract)
     return effectiveSrc;
   }, [effectiveSrc, originalStreamUrl]);
+
+  const directPlaybackUrl = useMemo(() => {
+    // Try to rewrite known provider domains to the VPN/Cloudflare domain for direct iframe playback.
+    // This uses the user's browser IP/VPN path rather than the datacenter proxy.
+    return externalUrl
+      .replace('http://line.myox.me', CLOUDFLARE_VPN_DOMAIN)
+      .replace('http://line.premiumvinted.se', CLOUDFLARE_VPN_DOMAIN);
+  }, [externalUrl]);
 
   // Detect configuration error (server_url set to proxy domain)
   const isConfigError = effectiveSrc === 'error://server_url_is_proxy_domain' || 
@@ -726,6 +743,35 @@ export function ShakaPlayer({
 
   return (
     <div className="relative h-full w-full bg-black">
+      {/* Direct playback fallback (iframe) */}
+      {showDirectPlayback && (
+        <div className="absolute inset-0 z-40 bg-background">
+          <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between border-b bg-background/80 p-3 backdrop-blur">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">Direktuppspelning</p>
+              <p className="truncate text-xs text-muted-foreground">{directPlaybackUrl}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setShowDirectPlayback(false)}>
+                Tillbaka
+              </Button>
+              {onClose && (
+                <Button variant="ghost" onClick={onClose}>
+                  Stäng
+                </Button>
+              )}
+            </div>
+          </div>
+          <iframe
+            title="Direktuppspelning"
+            src={directPlaybackUrl}
+            className="h-full w-full pt-12"
+            referrerPolicy="no-referrer"
+            allow="autoplay; fullscreen"
+          />
+        </div>
+      )}
+
       {/* Title overlay with close button */}
       {(title || onClose) && (
         <div className={cn(
@@ -774,7 +820,7 @@ export function ShakaPlayer({
               </AlertDescription>
             </Alert>
 
-            {/* Prominent VLC button for provider blocking (458, 502) or IP-locked (551) */}
+            {/* Prominent actions for provider blocking (458, 502) or IP-locked */}
             {(playerError.httpStatus === 458 || playerError.httpStatus === 502 || playerError.httpStatus === 551) && (
               <div className={cn(
                 "p-4 rounded-lg border space-y-3",
@@ -796,6 +842,18 @@ export function ShakaPlayer({
                     : "Öppna strömmen i en extern spelare som körs på din dator. Detta använder din hem-IP istället för våra servrar."}
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  {playerError.httpStatus === 551 && directPlaybackUrl && (
+                    <Button
+                      onClick={() => {
+                        setPlayerError(null);
+                        setShowDirectPlayback(true);
+                      }}
+                      variant="secondary"
+                      className="flex-1 min-w-[180px]"
+                    >
+                      Direktuppspelning (VPN-länk)
+                    </Button>
+                  )}
                   <Button 
                     onClick={() => handleOpenExternal('vlc')}
                     className="flex-1 min-w-[120px]"
