@@ -147,6 +147,16 @@ serve(async (req) => {
     }
 
     if (!response.ok) {
+      // Special handling for EPG 404 - return empty data instead of error
+      // EPG data may not exist for all channels
+      if (response.status === 404 && action === 'get_short_epg') {
+        console.log(`EPG not available for stream_id ${params?.stream_id}, returning empty`);
+        return new Response(
+          JSON.stringify({ epg_listings: [] }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
       return new Response(
         JSON.stringify({ error: `API returned status ${response.status}`, url: usedUrl ? safeLogUrl(usedUrl, password) : undefined }),
         { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
