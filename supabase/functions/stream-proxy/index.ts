@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, HEAD, OPTIONS",
 };
 
 /**
@@ -40,8 +40,10 @@ serve(async (req) => {
     let customUserAgent: string | null = null;
     let customReferer: string | null = null;
 
-    // Support both GET (query param) and POST (body)
-    if (req.method === "GET") {
+    // Support GET, HEAD (for preflight checks), and POST
+    const isHeadRequest = req.method === "HEAD";
+    
+    if (req.method === "GET" || isHeadRequest) {
       const url = new URL(req.url);
       streamUrl = url.searchParams.get("url");
       customUserAgent = url.searchParams.get("userAgent");
@@ -338,6 +340,15 @@ serve(async (req) => {
 
     // Indicate we support range requests
     responseHeaders["Accept-Ranges"] = response.headers.get("accept-ranges") || "bytes";
+
+    // For HEAD requests, return headers only (no body) - used by player preflight checks
+    if (isHeadRequest) {
+      console.log(`[stream-proxy] HEAD request successful - returning headers only`);
+      return new Response(null, {
+        status: upstreamStatus,
+        headers: responseHeaders,
+      });
+    }
 
     // Pipe the stream directly - Man-in-the-Middle complete!
     return new Response(response.body, {
