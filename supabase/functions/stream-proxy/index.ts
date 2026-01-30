@@ -114,8 +114,9 @@ async function fetchWithRetry(
         return { response, finalUrl, error: null };
       }
       
-      // Rate limiting (458) or server overload - retry with backoff
-      if (response.status === 458 || response.status === 429 || response.status === 503) {
+      // Rate limiting / transient upstream errors - retry with backoff
+      // Note: Some IPTV providers intermittently return 5xx for playlist endpoints.
+      if (response.status === 458 || response.status === 429 || response.status === 503 || response.status === 502 || response.status === 500) {
         const delayMs = baseDelayMs * Math.pow(2, attempt - 1); // Exponential backoff
         console.log(`[stream-proxy] ⏳ Rate limited (HTTP ${response.status}), waiting ${delayMs}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -254,11 +255,20 @@ serve(async (req) => {
     console.log(`[stream-proxy] 🕵️ Stealth Mode: Chrome UA + Sec-Fetch headers`);
 
     // Build URL list to try - prioritize HTTP for live streams AND M3U fetches
-    // Many IPTV providers only support HTTP and reject HTTPS connections from datacenter IPs
+    // Many IPTV providers only support HTTP and reject HTTPS connections from datacenter IPs.
+    // EXCEPTION: if the request is already going via our HTTPS tunnel domain, do NOT downgrade.
     const isLiveStream = urlToFetch.includes('/live/') || urlToFetch.endsWith('.ts');
     const isM3uFetch = urlToFetch.includes('type=m3u') || urlToFetch.includes('output=m3u') || 
                        urlToFetch.includes('.m3u') || urlToFetch.includes('get.php');
     const isIptvProvider = isLiveStream || isM3uFetch;
+
+    let isTunnelDomain = false;
+    try {
+      const host = new URL(urlToFetch).hostname;
+      isTunnelDomain = host === 'vpn.premiumvinted.se';
+    } catch {
+      // ignore
+    }
     
     const urlsToTry: string[] = [];
     
@@ -266,8 +276,11 @@ serve(async (req) => {
     if (cachedFinalUrl) {
       urlsToTry.push(cachedFinalUrl);
     } else if (urlToFetch.startsWith("https://")) {
-      // For IPTV providers, always try HTTP first (many block HTTPS from datacenters)
-      if (isIptvProvider) {
+      // If it's already tunneled over HTTPS, keep HTTPS (the tunnel expects TLS).
+      if (isTunnelDomain) {
+        urlsToTry.push(urlToFetch);
+      } else if (isIptvProvider) {
+        // For IPTV providers, always try HTTP first (many block HTTPS from datacenters)
         urlsToTry.push(urlToFetch.replace("https://", "http://"));
         // Don't try HTTPS fallback for IPTV - it will likely fail with ECONNREFUSED
       } else {
