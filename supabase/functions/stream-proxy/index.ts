@@ -380,7 +380,7 @@ serve(async (req) => {
     const contentType = response.headers.get("content-type") || "application/octet-stream";
     const contentLength = response.headers.get("content-length");
     
-    // Handle m3u8 playlists - rewrite URLs to go through proxy
+    // Handle m3u8 playlists - rewrite ALL URLs to go through proxy (MITM mode)
     if (contentType.includes("mpegurl") || contentType.includes("m3u8") || finalUrl.includes(".m3u8")) {
       const text = await response.text();
       
@@ -390,7 +390,8 @@ serve(async (req) => {
       // Dynamically determine proxy domain from request URL
       const requestUrl = new URL(req.url);
       const proxyBase = `${requestUrl.origin}/functions/v1/stream-proxy`;
-      console.log(`[stream-proxy] Rewriting m3u8 with proxy base: ${proxyBase}`);
+      console.log(`[stream-proxy] 📝 Rewriting m3u8 with proxy base: ${proxyBase}`);
+      console.log(`[stream-proxy] 📝 Base URL for relative paths: ${redactUrl(baseUrl)}`);
       
       // Build query params to propagate custom headers
       const headerParams = [];
@@ -398,41 +399,88 @@ serve(async (req) => {
       if (customReferer) headerParams.push(`referer=${encodeURIComponent(customReferer)}`);
       const headerSuffix = headerParams.length > 0 ? `&${headerParams.join('&')}` : '';
 
-      // Rewrite URLs in playlist
+      // Helper to resolve and proxy a URL
+      const proxyUrl = (url: string): string => {
+        const fullUrl = url.startsWith("http") ? url : baseUrl + url;
+        return `${proxyBase}?url=${encodeURIComponent(fullUrl)}${headerSuffix}`;
+      };
+
+      // Rewrite URLs in playlist - handle ALL HLS tags with URLs
       const rewrittenPlaylist = text.split("\n").map(line => {
         const trimmed = line.trim();
         
         if (trimmed === "") return line;
         
-        // Handle comments but check for URI= in EXT-X-KEY
+        // Handle HLS tags with embedded URLs
         if (trimmed.startsWith("#")) {
+          // URI="..." attribute (EXT-X-KEY, EXT-X-MAP, EXT-X-I-FRAME-STREAM-INF, etc.)
           if (trimmed.includes('URI="')) {
             return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
-              const fullUrl = uri.startsWith("http") ? uri : baseUrl + uri;
-              return `URI="${proxyBase}?url=${encodeURIComponent(fullUrl)}${headerSuffix}"`;
+              return `URI="${proxyUrl(uri)}"`;
             });
           }
+          
+          // EXT-X-MEDIA with URI attribute
+          if (trimmed.startsWith("#EXT-X-MEDIA") && trimmed.includes('URI="')) {
+            return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
+              return `URI="${proxyUrl(uri)}"`;
+            });
+          }
+          
+          // EXT-X-I-FRAME-STREAM-INF (I-frame only playlists)
+          if (trimmed.startsWith("#EXT-X-I-FRAME-STREAM-INF") && trimmed.includes('URI="')) {
+            return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
+              return `URI="${proxyUrl(uri)}"`;
+            });
+          }
+          
+          // EXT-X-PRELOAD-HINT (LL-HLS)
+          if (trimmed.startsWith("#EXT-X-PRELOAD-HINT") && trimmed.includes('URI="')) {
+            return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
+              return `URI="${proxyUrl(uri)}"`;
+            });
+          }
+          
+          // EXT-X-PART (LL-HLS partial segments)
+          if (trimmed.startsWith("#EXT-X-PART") && trimmed.includes('URI="')) {
+            return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
+              return `URI="${proxyUrl(uri)}"`;
+            });
+          }
+          
+          // EXT-X-SESSION-DATA with URI
+          if (trimmed.startsWith("#EXT-X-SESSION-DATA") && trimmed.includes('URI="')) {
+            return trimmed.replace(/URI="([^"]+)"/g, (_match, uri) => {
+              return `URI="${proxyUrl(uri)}"`;
+            });
+          }
+          
           return line;
         }
         
-        // Rewrite segment URLs
-        if (trimmed.startsWith("http")) {
-          return `${proxyBase}?url=${encodeURIComponent(trimmed)}${headerSuffix}`;
-        } else if (trimmed.length > 0) {
-          const fullUrl = baseUrl + trimmed;
-          return `${proxyBase}?url=${encodeURIComponent(fullUrl)}${headerSuffix}`;
+        // Non-comment lines are segment/playlist URLs
+        if (trimmed.length > 0) {
+          // Check if it's a valid URL or path (not just whitespace or special chars)
+          if (trimmed.startsWith("http") || trimmed.match(/^[a-zA-Z0-9_\-\.\/]/)) {
+            return proxyUrl(trimmed);
+          }
         }
         
         return line;
       }).join("\n");
 
-      console.log(`[stream-proxy] Rewrote m3u8 playlist (${text.length} bytes)`);
+      // Count rewritten URLs for logging
+      const originalUrlCount = (text.match(/URI="|^[^#\s][^\s]+$/gm) || []).length;
+      const rewrittenUrlCount = (rewrittenPlaylist.match(/stream-proxy\?url=/g) || []).length;
+      console.log(`[stream-proxy] ✅ Rewrote m3u8: ${text.length} bytes, ${rewrittenUrlCount} URLs proxied`);
 
       return new Response(rewrittenPlaylist, {
         headers: {
           ...corsHeaders,
           "Content-Type": "application/vnd.apple.mpegurl",
           "Cache-Control": "no-cache, no-store, must-revalidate",
+          "X-Proxy-Rewritten": "true",
+          "X-Proxy-Urls-Rewritten": String(rewrittenUrlCount),
         },
       });
     }
