@@ -124,10 +124,12 @@ export default function LiveTV() {
       
       // Route through Cloudflare tunnel if HTTP (for Mixed Content protection)
       if (streamUrl.startsWith('http://')) {
-        try {
-          const urlObj = new URL(streamUrl);
-          // Replace origin with VPN tunnel domain
-          streamUrl = streamUrl.replace(urlObj.origin, 'https://vpn.premiumvinted.se');
+      try {
+        const urlObj = new URL(streamUrl);
+        // FIXED: Use pathname + search to avoid port conflict
+        // URL.origin doesn't include explicit :80, but the original string might
+        const path = urlObj.pathname + urlObj.search;
+        streamUrl = `https://vpn.premiumvinted.se${path}`;
         } catch {
           // If URL parsing fails, use proxy function as fallback
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
