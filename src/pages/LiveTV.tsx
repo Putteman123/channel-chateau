@@ -118,27 +118,29 @@ export default function LiveTV() {
   };
 
   const getStreamUrl = useCallback((channel: UnifiedChannel) => {
-    // For M3U channels, use the original stream_url and route through Cloudflare tunnel
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    
+    // For M3U channels, route through Supabase proxy (adds CORS headers)
     if ('stream_url' in channel && channel.stream_url) {
       let streamUrl = channel.stream_url;
       
-      // Route through Cloudflare tunnel if HTTP (for Mixed Content protection)
+      // Build the VPN tunnel URL first (for HTTP streams)
       if (streamUrl.startsWith('http://')) {
-      try {
-        const urlObj = new URL(streamUrl);
-        // FIXED: Use pathname + search to avoid port conflict
-        // URL.origin doesn't include explicit :80, but the original string might
-        const path = urlObj.pathname + urlObj.search;
-        streamUrl = `https://vpn.premiumvinted.se${path}`;
+        try {
+          const urlObj = new URL(streamUrl);
+          // Use pathname + search to avoid port conflict (:80 issue)
+          const path = urlObj.pathname + urlObj.search;
+          streamUrl = `https://vpn.premiumvinted.se${path}`;
         } catch {
-          // If URL parsing fails, use proxy function as fallback
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
+          // If URL parsing fails, keep original
         }
       }
       
-      return streamUrl;
+      // ALWAYS wrap in Supabase proxy to add CORS headers
+      // The proxy will fetch from VPN URL and add Access-Control-Allow-Origin: *
+      return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
     }
+    
     // For Xtream channels
     if (!credentials) return '';
     return XtreamAPI.buildLiveStreamUrl(credentials, channel.stream_id, { 
