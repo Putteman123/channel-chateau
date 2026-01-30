@@ -118,11 +118,24 @@ export default function LiveTV() {
   };
 
   const getStreamUrl = useCallback((channel: UnifiedChannel) => {
-    // For M3U channels, use the stream_url directly (through proxy)
+    // For M3U channels, use the original stream_url and route through Cloudflare tunnel
     if ('stream_url' in channel && channel.stream_url) {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      // Base proxy URL - headers will be added separately by VideoPlayer
-      return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(channel.stream_url)}`;
+      let streamUrl = channel.stream_url;
+      
+      // Route through Cloudflare tunnel if HTTP (for Mixed Content protection)
+      if (streamUrl.startsWith('http://')) {
+        try {
+          const urlObj = new URL(streamUrl);
+          // Replace origin with VPN tunnel domain
+          streamUrl = streamUrl.replace(urlObj.origin, 'https://vpn.premiumvinted.se');
+        } catch {
+          // If URL parsing fails, use proxy function as fallback
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+          return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
+        }
+      }
+      
+      return streamUrl;
     }
     // For Xtream channels
     if (!credentials) return '';
