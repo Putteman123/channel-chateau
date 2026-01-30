@@ -52,17 +52,18 @@ export function EPGInfo({
     enabled: !!customEpgUrl,
   });
 
-  // Standard Xtream EPG (fallback)
+  // Standard Xtream EPG (fallback) - only for Xtream sources with valid credentials
   const { data: xtreamEpgData, isLoading: xtreamLoading, error: xtreamError } = useQuery({
-    queryKey: ['epg', credentials.serverUrl, streamId],
+    queryKey: ['epg', credentials?.serverUrl ?? 'none', streamId],
     queryFn: async () => {
+      if (!credentials) return [];
       const data = await XtreamAPI.getEPG(credentials, streamId);
       return data.epg_listings || [];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
-    // Only fetch Xtream EPG if no custom XMLTV URL
-    enabled: !customEpgUrl,
+    // Only fetch Xtream EPG if no custom XMLTV URL AND we have valid credentials
+    enabled: !customEpgUrl && !!credentials,
   });
 
   // Determine which EPG source to use
