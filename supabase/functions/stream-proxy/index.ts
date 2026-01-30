@@ -337,6 +337,11 @@ serve(async (req) => {
       let hint: string;
       let isIpLocked = false;
       
+      // Helper to validate HTTP status (must be 101 or 200-599)
+      const isValidHttpStatus = (status: number): boolean => {
+        return status === 101 || (status >= 200 && status <= 599);
+      };
+      
       if (isHttp551 || actualHttpStatus === 551) {
         // HTTP 551 - Advanced blocking, likely IP-locked/tokenized stream
         // IMPORTANT: Some runtimes/clients treat non-standard 5xx like 551 as a platform/runtime error.
@@ -370,8 +375,19 @@ serve(async (req) => {
         responseStatus = 502;
         errorType = "Connection refused";
         hint = "Anslutning nekad. Öppna i VLC/MPV.";
+      } else if (actualHttpStatus && !isValidHttpStatus(actualHttpStatus)) {
+        // NON-STANDARD HTTP STATUS (e.g., 884, 999) - Map to 502 Bad Gateway
+        console.error(`[stream-proxy] ⚠️ Non-standard HTTP status ${actualHttpStatus} - mapping to 502`);
+        responseStatus = 502;
+        errorType = "Provider error";
+        hint = `Leverantören returnerade ogiltigt HTTP-svar (${actualHttpStatus}). Öppna i VLC/MPV.`;
       } else {
         responseStatus = actualHttpStatus || 502;
+        // Final safety check - ensure responseStatus is valid
+        if (!isValidHttpStatus(responseStatus)) {
+          console.error(`[stream-proxy] ⚠️ Invalid status ${responseStatus} - falling back to 502`);
+          responseStatus = 502;
+        }
         errorType = "Upstream unreachable";
         hint = `Kunde inte nå strömmen (HTTP ${actualHttpStatus || 'okänd'}).`;
       }
