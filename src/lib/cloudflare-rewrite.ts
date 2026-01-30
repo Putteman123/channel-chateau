@@ -246,14 +246,16 @@ export function proxyViaEdgeFunction(
 /**
  * HYBRID PROXY: Automatically choose the best proxy method
  * 
- * - Domain-based URLs → Cloudflare Tunnel (faster)
- * - IP-based URLs → Supabase Edge Function (universal)
+ * - HLS streams (.m3u8 or /live/) → Edge Function (for manifest rewriting)
+ * - IP-based URLs → Edge Function (universal proxy)
+ * - Other domain URLs → Cloudflare Tunnel (faster for pass-through)
  * 
- * This is the main function that should be used for proxying streams.
+ * IMPORTANT: Live HLS streams MUST go through Edge Function to rewrite
+ * segment URLs and prevent Mixed Content blocks from secondary servers.
  */
 export function tunnelOrProxy(
   originalUrl: string,
-  options: { convertTs?: boolean } = {}
+  options: { convertTs?: boolean; forceEdgeFunction?: boolean } = {}
 ): string {
   if (!originalUrl) return originalUrl;
   
@@ -262,12 +264,26 @@ export function tunnelOrProxy(
     return originalUrl;
   }
   
-  // Route based on URL type
-  if (isIpAddress(originalUrl)) {
-    // IP address → Edge Function (universal proxy)
+  const { forceEdgeFunction = false } = options;
+  
+  // Detect if this is a live HLS stream that needs manifest rewriting
+  const isLiveStream = originalUrl.includes('/live/') || 
+                       originalUrl.includes('.m3u8') ||
+                       originalUrl.includes('/play/');
+  
+  // Route based on URL type and stream type
+  // IP addresses → Always Edge Function
+  // Live HLS streams → Edge Function (for manifest rewriting)
+  // Other → Cloudflare tunnel
+  if (isIpAddress(originalUrl) || isLiveStream || forceEdgeFunction) {
+    const reason = isIpAddress(originalUrl) ? 'IP address' : 
+                   isLiveStream ? 'HLS stream (needs manifest rewriting)' :
+                   'Forced';
+    console.log(`[hybrid-proxy] Using Edge Function: ${reason}`);
     return proxyViaEdgeFunction(originalUrl, options);
   } else {
-    // Domain → Cloudflare tunnel (faster)
+    // Domain non-live → Cloudflare tunnel (faster)
+    console.log('[hybrid-proxy] Using Cloudflare Tunnel: non-live domain URL');
     return convertToTunnel(originalUrl, options);
   }
 }
