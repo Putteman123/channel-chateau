@@ -92,22 +92,33 @@ export function hasMixedContentIssue(url: string): boolean {
 }
 
 /**
+ * Check if a URL contains an IP address instead of a domain name
+ */
+export function isIpAddressUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    // IPv4: 185.245.0.183
+    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+    // IPv6: [::1] or bare ::1
+    const isIPv6 = hostname.startsWith('[') || hostname.includes(':');
+    return isIPv4 || isIPv6;
+  } catch {
+    return /^https?:\/\/(\d{1,3}\.){3}\d{1,3}(:\d+)?\//.test(url);
+  }
+}
+
+/**
  * Check if URL is already proxied/tunneled
- * Returns true if URL is using Cloudflare tunnel OR legacy Supabase proxy
+ * Returns true if URL is using Cloudflare tunnel OR Supabase Edge Function
  */
 export function isProxiedUrl(url: string): boolean {
-  // Cloudflare Direct Tunnel (new method)
+  // Cloudflare Direct Tunnel (for domain-based URLs)
   const CLOUDFLARE_VPN = 'https://vpn.premiumvinted.se';
   if (url.startsWith(CLOUDFLARE_VPN)) return true;
   
-  // Legacy Supabase proxy with url parameter
+  // Supabase Edge Function proxy (for IP-based URLs)
   const hasProxyPath = url.includes('/functions/v1/stream-proxy');
-  const hasUrlParam = url.includes('?url=');
-  if (hasProxyPath && hasUrlParam) return true;
-  
-  // Custom domain with url parameter (legacy)
-  const customDomain = 'line.premiumvinted.se';
-  if (url.includes(customDomain) && hasUrlParam) return true;
+  if (hasProxyPath) return true;
   
   return false;
 }

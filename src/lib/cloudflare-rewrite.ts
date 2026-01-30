@@ -7,25 +7,52 @@
  * The Cloudflare domain (vpn.premiumvinted.se) proxies directly to the
  * IPTV provider's IP address, making HTTP streams accessible via HTTPS.
  * 
- * This is FASTER than the Supabase Edge Function proxy because:
- * - Cloudflare's edge network is closer to both users and providers
- * - No serverless cold starts or function overhead
- * - Native HTTP/2 and connection pooling
+ * HYBRID APPROACH:
+ * - Domain-based URLs → Cloudflare Tunnel (faster, uses edge network)
+ * - IP-based URLs → Supabase Edge Function (universal proxy for any IP)
+ * 
+ * This is necessary because Cloudflare DNS can only point to ONE IP address,
+ * but IPTV providers often use multiple backend IPs.
  */
 
 // The secure Cloudflare VPN domain that proxies to IPTV providers
 export const CLOUDFLARE_VPN_DOMAIN = 'https://vpn.premiumvinted.se';
 
+// Supabase Edge Function for IP-based URLs (universal fallback)
+export const SUPABASE_PROXY_BASE = 'https://qeeqaqsftdrtnlceqzcj.supabase.co/functions/v1/stream-proxy';
+
 // Known IPTV provider domains to rewrite
 const PROVIDER_DOMAINS = [
   'http://line.myox.me',
   'http://line.premiumvinted.se',
-  // IP addresses are also supported via path extraction
 ];
 
 // Cache for domain availability
 let tunnelAvailable: boolean | null = null;
 let testInProgress: Promise<boolean> | null = null;
+
+/**
+ * Check if a URL contains an IP address instead of a domain name
+ * 
+ * Examples:
+ * - http://185.245.0.183/live/... → true
+ * - http://185.245.0.183:8080/live/... → true
+ * - http://[::1]/live/... → true (IPv6)
+ * - http://line.myox.me/live/... → false
+ */
+export function isIpAddress(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    // IPv4: 185.245.0.183
+    const isIPv4 = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+    // IPv6: [::1] or bare ::1
+    const isIPv6 = hostname.startsWith('[') || hostname.includes(':');
+    return isIPv4 || isIPv6;
+  } catch {
+    // Fallback: check for IP pattern in URL
+    return /^https?:\/\/(\d{1,3}\.){3}\d{1,3}(:\d+)?\//.test(url);
+  }
+}
 
 /**
  * Test if the Cloudflare tunnel domain is reachable
@@ -79,10 +106,17 @@ export function isCloudflareUrl(url: string): boolean {
 }
 
 /**
- * Check if URL is using the old Supabase proxy format
+ * Check if URL is using the Supabase proxy format
  */
 export function isSupabaseProxyUrl(url: string): boolean {
   return url.includes('/functions/v1/stream-proxy');
+}
+
+/**
+ * Check if URL is proxied (either Cloudflare tunnel or Supabase proxy)
+ */
+export function isProxiedUrl(url: string): boolean {
+  return isCloudflareUrl(url) || isSupabaseProxyUrl(url);
 }
 
 /**
@@ -117,8 +151,8 @@ function convertTsToM3u8(path: string): string {
 /**
  * Convert stream URL to use Cloudflare Direct Tunnel (IPTV Smarters method)
  * 
- * This rewrites the URL to go through our Cloudflare-proxied domain,
- * which acts as an SSL tunnel to the IPTV provider.
+ * NOTE: This function only handles DOMAIN-based URLs.
+ * For IP-based URLs, use tunnelOrProxy() which routes to Edge Function.
  * 
  * @param originalUrl - The original IPTV stream URL (usually HTTP)
  * @param options - Configuration options
@@ -134,16 +168,17 @@ export function convertToTunnel(
   
   if (!originalUrl) return originalUrl;
   
-  // Already using the tunnel
-  if (isCloudflareUrl(originalUrl)) {
-    console.log('[cloudflare-tunnel] URL already tunneled');
+  // Already using the tunnel or proxy
+  if (isProxiedUrl(originalUrl)) {
+    console.log('[cloudflare-tunnel] URL already proxied');
     return originalUrl;
   }
   
-  // Don't convert Supabase proxy URLs (shouldn't happen in new flow)
-  if (isSupabaseProxyUrl(originalUrl)) {
-    console.warn('[cloudflare-tunnel] Received Supabase proxy URL - this should not happen in Direct Tunnel mode');
-    return originalUrl;
+  // IP-based URLs should NOT go through Cloudflare tunnel
+  // They must use Supabase Edge Function instead
+  if (isIpAddress(originalUrl)) {
+    console.log('[cloudflare-tunnel] IP-address detected - skipping tunnel (use Edge Function)');
+    return originalUrl; // Return unchanged - caller should use tunnelOrProxy()
   }
   
   // Extract the path from the original URL
@@ -171,30 +206,94 @@ export function convertToTunnel(
 }
 
 /**
- * Legacy function - now uses direct tunneling
- * @deprecated Use convertToTunnel instead
+ * Route URL through Supabase Edge Function proxy
+ * Used for IP-based URLs that can't go through Cloudflare tunnel
+ * 
+ * @param originalUrl - The original stream URL
+ * @param options - Configuration options  
+ */
+export function proxyViaEdgeFunction(
+  originalUrl: string,
+  options: { convertTs?: boolean } = {}
+): string {
+  const { convertTs = true } = options;
+  
+  if (!originalUrl) return originalUrl;
+  
+  // Already proxied
+  if (isProxiedUrl(originalUrl)) {
+    return originalUrl;
+  }
+  
+  // Convert .ts to .m3u8 if needed
+  let urlToProxy = originalUrl;
+  if (convertTs && originalUrl.includes('.ts')) {
+    urlToProxy = originalUrl.replace(/\.ts(\?|$)/, '.m3u8$1');
+    console.log('[edge-proxy] Converted .ts → .m3u8 for browser compatibility');
+  }
+  
+  const proxyUrl = `${SUPABASE_PROXY_BASE}?url=${encodeURIComponent(urlToProxy)}`;
+  
+  console.log('[edge-proxy] ─────────────────────────');
+  console.log('[edge-proxy] Mode: Edge Function Proxy (Supabase)');
+  console.log('[edge-proxy] Original:', originalUrl.substring(0, 60) + '...');
+  console.log('[edge-proxy] Proxied:', proxyUrl.substring(0, 80) + '...');
+  console.log('[edge-proxy] ─────────────────────────');
+  
+  return proxyUrl;
+}
+
+/**
+ * HYBRID PROXY: Automatically choose the best proxy method
+ * 
+ * - Domain-based URLs → Cloudflare Tunnel (faster)
+ * - IP-based URLs → Supabase Edge Function (universal)
+ * 
+ * This is the main function that should be used for proxying streams.
+ */
+export function tunnelOrProxy(
+  originalUrl: string,
+  options: { convertTs?: boolean } = {}
+): string {
+  if (!originalUrl) return originalUrl;
+  
+  // Already proxied
+  if (isProxiedUrl(originalUrl)) {
+    return originalUrl;
+  }
+  
+  // Route based on URL type
+  if (isIpAddress(originalUrl)) {
+    // IP address → Edge Function (universal proxy)
+    return proxyViaEdgeFunction(originalUrl, options);
+  } else {
+    // Domain → Cloudflare tunnel (faster)
+    return convertToTunnel(originalUrl, options);
+  }
+}
+
+/**
+ * Legacy function - now uses hybrid approach
+ * @deprecated Use tunnelOrProxy instead
  */
 export function rewriteToProxy(url: string): string {
-  return convertToTunnel(url);
+  return tunnelOrProxy(url);
 }
 
 /**
- * Legacy function - now uses direct tunneling  
- * @deprecated Use convertToTunnel instead
+ * Legacy function - now uses hybrid approach
+ * @deprecated Use tunnelOrProxy instead
  */
 export function rewriteToCloudflare(url: string): string {
-  return convertToTunnel(url);
+  return tunnelOrProxy(url);
 }
 
 /**
- * Full transformation: route through Cloudflare tunnel
+ * Full transformation: route through appropriate proxy
  * This is the main function called by xtream-api.ts
- * 
- * @param url - The original stream URL  
- * @param _options - Deprecated options (preferM3u8 is now always true for browsers)
  */
 export function transformStreamUrl(url: string, _options?: { preferM3u8?: boolean }): string {
-  return convertToTunnel(url, { convertTs: true });
+  return tunnelOrProxy(url, { convertTs: true });
 }
 
 /**
@@ -231,15 +330,27 @@ export function getOriginalProviderUrl(tunneledUrl: string, originalDomain: stri
 }
 
 /**
- * Get connection type for UI display
+ * Get connection type based on URL
  */
-export function getConnectionType(): 'cloudflare-tunnel' | 'supabase-proxy' | 'direct' {
-  return 'cloudflare-tunnel';
+export function getConnectionType(url: string): 'cloudflare-tunnel' | 'edge-function' | 'direct' {
+  if (isCloudflareUrl(url)) return 'cloudflare-tunnel';
+  if (isSupabaseProxyUrl(url)) return 'edge-function';
+  return 'direct';
 }
 
 /**
  * Get connection display name for debug UI
  */
-export function getConnectionDisplayName(): string {
-  return 'Secure Tunnel (Cloudflare)';
+export function getConnectionDisplayName(url?: string): string {
+  if (!url) return 'Secure Tunnel (Cloudflare)';
+  
+  const type = getConnectionType(url);
+  switch (type) {
+    case 'cloudflare-tunnel':
+      return 'Secure Tunnel (Cloudflare)';
+    case 'edge-function':
+      return 'Edge Function Proxy (Supabase)';
+    default:
+      return 'Direct Connection';
+  }
 }

@@ -176,14 +176,21 @@ export function buildApiUrl(creds: XtreamCredentials, action?: string): string {
   return url;
 }
 
-// Import the Cloudflare Direct Tunnel utility (IPTV Smarters method)
-import { convertToTunnel, isCloudflareUrl, getConnectionDisplayName } from './cloudflare-rewrite';
+// Import the Hybrid Proxy utility (Cloudflare for domains, Edge Function for IPs)
+import { 
+  tunnelOrProxy, 
+  isCloudflareUrl, 
+  isSupabaseProxyUrl,
+  isIpAddress,
+  getConnectionDisplayName,
+  SUPABASE_PROXY_BASE,
+} from './cloudflare-rewrite';
 
 /**
- * Check if a URL is already using our Cloudflare tunnel
+ * Check if a URL is already using our proxy system
  */
 export function isProxiedUrl(url: string): boolean {
-  return isCloudflareUrl(url);
+  return isCloudflareUrl(url) || isSupabaseProxyUrl(url);
 }
 
 /**
@@ -192,26 +199,22 @@ export function isProxiedUrl(url: string): boolean {
 export { getConnectionDisplayName };
 
 /**
- * Transform URL to use Cloudflare Direct Tunnel
- * This is FASTER than Supabase proxy - uses Cloudflare's edge network
- * 
- * The tunnel:
- * - Converts HTTP → HTTPS (bypasses Mixed Content)
- * - Converts .ts → .m3u8 (browser compatibility)
- * - Routes through Cloudflare's global network (low latency)
+ * Transform URL using HYBRID approach:
+ * - Domain-based URLs → Cloudflare Tunnel (faster)
+ * - IP-based URLs → Supabase Edge Function (universal)
  * 
  * @param url - The original stream URL
  */
 function tunnelStreamUrl(url: string): string {
   // Don't double-transform
-  if (isCloudflareUrl(url)) {
-    console.log('[XtreamAPI] URL already tunneled, skipping');
+  if (isProxiedUrl(url)) {
+    console.log('[XtreamAPI] URL already proxied, skipping');
     return url;
   }
   
-  // Transform through Cloudflare tunnel
-  const tunneled = convertToTunnel(url, { convertTs: true });
-  return tunneled;
+  // Use hybrid approach - automatically chooses best proxy
+  const proxied = tunnelOrProxy(url, { convertTs: true });
+  return proxied;
 }
 
 /**
