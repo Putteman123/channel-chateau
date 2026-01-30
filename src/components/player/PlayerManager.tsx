@@ -1,24 +1,33 @@
 import { useState, useCallback } from 'react';
 import { ShakaPlayer, ShakaPlayerProps } from './ShakaPlayer';
 import { ClapprPlayer, ClapprPlayerProps } from './ClapprPlayer';
+import { NativeVideoPlayer, NativeVideoPlayerProps } from './NativeVideoPlayer';
 import { usePlayerPreference, PlayerEngine } from '@/hooks/usePlayerPreference';
+import { useNativePlatform } from '@/hooks/useNativePlatform';
 import { Button } from '@/components/ui/button';
 import { RefreshCw } from 'lucide-react';
 
 export interface PlayerManagerProps extends Omit<ShakaPlayerProps, 'onError'> {
   /** Allow player hot-swap on error */
   allowHotSwap?: boolean;
+  /** Original (non-proxied) stream URL for native player */
+  originalStreamUrl?: string;
 }
 
 /**
- * PlayerManager - Renders the correct player based on user preference
+ * PlayerManager - Renders the correct player based on platform and user preference
+ * 
+ * On Native (iOS/Android): Uses NativeVideoPlayer with ExoPlayer/AVPlayer
+ * On Web: Uses Shaka Player (default) or Clappr based on user preference
  * Supports hot-swapping to alternative player on error
  */
 export function PlayerManager({
   allowHotSwap = true,
+  originalStreamUrl,
   ...playerProps
 }: PlayerManagerProps) {
   const { preferredPlayer } = usePlayerPreference();
+  const { isNative } = useNativePlatform();
   const [activePlayer, setActivePlayer] = useState<PlayerEngine>(preferredPlayer);
   const [errorOccurred, setErrorOccurred] = useState(false);
   const [showHotSwapPrompt, setShowHotSwapPrompt] = useState(false);
@@ -48,7 +57,29 @@ export function PlayerManager({
     setPlayerKey(prev => prev + 1);
   }, []);
 
-  // Determine which player to render
+  // 🚀 NATIVE PLATFORM: Use NativeVideoPlayer (ExoPlayer/AVPlayer)
+  if (isNative) {
+    console.log('[PlayerManager] 📱 Native platform detected - using NativeVideoPlayer');
+    
+    // Use original (non-proxied) URL for native player
+    const nativeUrl = originalStreamUrl || playerProps.src;
+    
+    return (
+      <NativeVideoPlayer
+        key={playerKey}
+        src={nativeUrl}
+        title={playerProps.title}
+        poster={playerProps.poster}
+        onClose={playerProps.onClose}
+        onProgress={playerProps.onProgress}
+        onEnded={playerProps.onEnded}
+        onError={handleError}
+        autoPlay={playerProps.autoPlay}
+      />
+    );
+  }
+
+  // Determine which player to render (Web)
   const renderPlayer = () => {
     const commonProps = {
       key: playerKey,

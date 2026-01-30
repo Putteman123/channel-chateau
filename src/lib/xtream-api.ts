@@ -1,5 +1,6 @@
 // Xtream Codes API Types and Functions
 import { supabase } from '@/integrations/supabase/client';
+import { Capacitor } from '@capacitor/core';
 
 export interface XtreamCredentials {
   serverUrl: string;
@@ -251,6 +252,19 @@ export function buildLiveStreamUrl(
     return 'error://server_url_is_proxy_domain';
   }
   
+  // 🚀 NATIVE APP: Return raw URL without proxy (ExoPlayer/AVPlayer handle HTTP natively)
+  if (Capacitor.isNativePlatform()) {
+    // Force HTTP protocol for live streams (many providers block HTTPS from datacenters)
+    if (forceHttp && base.startsWith('https://')) {
+      base = base.replace('https://', 'http://');
+    }
+    
+    const extension = preferTs ? 'ts' : 'm3u8';
+    const directUrl = `${base}/live/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
+    console.log('[XtreamAPI] 📱 Native platform - using direct URL:', directUrl.substring(0, 60) + '...');
+    return directUrl;
+  }
+  
   // Player API format (optional) - may be needed for specific providers
   if (usePlayerApi) {
     const playerApiUrl = buildPlayerApiUrl(creds, streamId);
@@ -293,6 +307,12 @@ export function buildMovieStreamUrl(
   const base = buildBaseUrl(creds);
   const directUrl = `${base}/movie/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${streamId}.${extension}`;
   
+  // 🚀 NATIVE APP: Return raw URL without proxy
+  if (Capacitor.isNativePlatform()) {
+    console.log('[XtreamAPI] 📱 Native platform - using direct movie URL:', directUrl.substring(0, 60) + '...');
+    return directUrl;
+  }
+  
   // Use Cloudflare Direct Tunnel for VOD content
   if (useProxy) {
     if (preferTs) {
@@ -316,6 +336,12 @@ export function buildSeriesStreamUrl(
   const { extension = 'mp4', useProxy = true, preferTs = false } = options;
   const base = buildBaseUrl(creds);
   const directUrl = `${base}/series/${encodeURIComponent(creds.username)}/${encodeURIComponent(creds.password)}/${episodeId}.${extension}`;
+  
+  // 🚀 NATIVE APP: Return raw URL without proxy
+  if (Capacitor.isNativePlatform()) {
+    console.log('[XtreamAPI] 📱 Native platform - using direct series URL:', directUrl.substring(0, 60) + '...');
+    return directUrl;
+  }
   
   // Use Cloudflare Direct Tunnel for series content
   if (useProxy) {
