@@ -1,207 +1,88 @@
 
+# Plan: Fixa Port-konflikt i URL (Ta bort :80 vid HTTPS)
 
-# Plan: Konvertera till Native App med Capacitor + Native Video Player
+## Problemanalys
 
-## Sammanfattning
-Din app kan enkelt konverteras till en riktig iOS/Android-app med **Capacitor**. Den stora fördelen är att native-appen kan använda **ExoPlayer (Android)** och **AVPlayer (iOS)** för att spela IPTV-strömmar direkt – utan Mixed Content-problem, utan CORS-begränsningar, och med stöd för råa `.ts`-strömmar.
+**Rotorsak identifierad:** I `LiveTV.tsx` rad 128-130 används `URL.origin` för att ersätta domänen med VPN-tunneln. Men `URL.origin` normaliserar bort standardportar (80 för HTTP, 443 för HTTPS), medan den ursprungliga URL-strängen behåller `:80` explicit.
+
+**Exempel:**
+```javascript
+const streamUrl = 'http://line.trxdnscloud.ru:80/live/user/pass/123.m3u8';
+const urlObj = new URL(streamUrl);
+
+console.log(urlObj.origin);  // 'http://line.trxdnscloud.ru' (UTAN :80!)
+console.log(streamUrl.replace(urlObj.origin, 'https://vpn.premiumvinted.se'));
+// → 'https://vpn.premiumvinted.se:80/live/user/pass/123.m3u8' (FEL! :80 kvar)
+```
+
+**Resultat:** URL:en blir `https://vpn.premiumvinted.se:80/...` vilket är ogiltigt (HTTPS på port 80).
 
 ---
 
-## Varför Native App Löser IPTV-Problemen
+## Lösning
 
-| Problem i Webbläsaren | Lösning i Native App |
-|-----------------------|----------------------|
-| Mixed Content (HTTPS → HTTP blockeras) | ExoPlayer/AVPlayer kan ladda HTTP direkt |
-| CORS-begränsningar | Native HTTP-stack ignorerar CORS |
-| Inga codecs för `.ts`-format | ExoPlayer hanterar MPEG-TS nativt |
-| Redirect till extern IP blockeras | Native följer alla redirects |
-| Kräver proxy/tunnel | Ingen proxy behövs! |
+Använd `urlObj.pathname + urlObj.search` istället för att ersätta origin. Detta extraherar endast path och query-parametrar, utan host eller port.
+
+**Alternativt:** Städa bort portnummer efter domänbytet med regex.
 
 ---
 
-## Rekommenderad Lösning: Capacitor + Native Video Player Plugin
+## Ändringar
 
-### Alternativ 1: `capacitor-video-player` (Rekommenderas)
-**Fördelar:**
-- Aktivt underhållet (senaste release 2024)
-- Stöd för HLS, DASH, MP4, och råa strömmar
-- Fullskärmsläge med native kontroller
-- Fungerar på både iOS och Android
+### Fil 1: `src/pages/LiveTV.tsx`
+
+**Rad 120-147** - Uppdatera `getStreamUrl` funktionen:
 
 ```typescript
-import { CapacitorVideoPlayer } from 'capacitor-video-player';
-
-// Spela IPTV-ström direkt utan proxy!
-await CapacitorVideoPlayer.initPlayer({
-  mode: 'fullscreen',
-  url: 'http://185.245.0.183/live/play/TOKEN/79662', // Fungerar!
-  playerId: 'iptv-player',
-  componentTag: 'div',
-});
-
-await CapacitorVideoPlayer.play({ playerId: 'iptv-player' });
-```
-
-### Alternativ 2: `capacitor-pm-video-exoplayer`
-**Specifikt för ExoPlayer (Android) med iOS-fallback:**
-```typescript
-import { Exoplayer } from 'capacitor-pm-video-exoplayer';
-
-await Exoplayer.play({
-  videoUrl: 'http://line.myox.me/live/user/pass/12345.m3u8',
-  mediaType: 'hls', // eller 'ts' för råa transport streams
-});
-```
-
----
-
-## Implementationsplan
-
-### Steg 1: Installera Capacitor
-```bash
-npm install @capacitor/core @capacitor/cli @capacitor/ios @capacitor/android
-npx cap init "Channel Chateau" app.lovable.75dc2d8aa96b483cb6655c65c33f188b
-```
-
-### Steg 2: Installera Native Video Player Plugin
-```bash
-npm install capacitor-video-player
-# eller för ExoPlayer-specifikt:
-npm install capacitor-pm-video-exoplayer
-```
-
-### Steg 3: Skapa Hybrid Player-komponent
-Uppdatera `PlayerManager.tsx` för att automatiskt välja rätt spelare:
-
-```typescript
-// src/components/player/NativeVideoPlayer.tsx
-import { Capacitor } from '@capacitor/core';
-import { CapacitorVideoPlayer } from 'capacitor-video-player';
-
-export function NativeVideoPlayer({ src, title, onClose }) {
-  const isNative = Capacitor.isNativePlatform();
-  
-  if (isNative) {
-    // Native app → Använd ExoPlayer/AVPlayer direkt
-    useEffect(() => {
-      CapacitorVideoPlayer.initPlayer({
-        mode: 'fullscreen',
-        url: src, // Ingen proxy behövs!
-        playerId: 'main-player',
-      });
-    }, [src]);
+const getStreamUrl = useCallback((channel: UnifiedChannel) => {
+  // For M3U channels, use the original stream_url and route through Cloudflare tunnel
+  if ('stream_url' in channel && channel.stream_url) {
+    let streamUrl = channel.stream_url;
     
-    return null; // Native player tar över skärmen
+    // Route through Cloudflare tunnel if HTTP (for Mixed Content protection)
+    if (streamUrl.startsWith('http://')) {
+      try {
+        const urlObj = new URL(streamUrl);
+        // FIXED: Use pathname + search to avoid port conflict
+        // URL.origin doesn't include explicit :80, but the original string might
+        const path = urlObj.pathname + urlObj.search;
+        streamUrl = `https://vpn.premiumvinted.se${path}`;
+      } catch {
+        // If URL parsing fails, use proxy function as fallback
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
+      }
+    }
+    
+    return streamUrl;
   }
-  
-  // Webb → Fallback till Shaka med proxy
-  return <ShakaPlayer src={src} title={title} onClose={onClose} />;
-}
+  // ... rest unchanged
+}, [credentials, preferTsLive, forceHttpLive, useProxy]);
 ```
 
-### Steg 4: Uppdatera URL-logik
-I native-läge behöver vi INTE proxy. Uppdatera `buildLiveStreamUrl`:
-
+**Förändring:** Istället för `streamUrl.replace(urlObj.origin, ...)` byggs nu URL:en korrekt med:
 ```typescript
-// src/lib/xtream-api.ts
-import { Capacitor } from '@capacitor/core';
-
-export function buildLiveStreamUrl(creds, streamId, options) {
-  const rawUrl = `${creds.serverUrl}/live/${creds.username}/${creds.password}/${streamId}.m3u8`;
-  
-  // Native app → Returnera rå URL (ingen proxy)
-  if (Capacitor.isNativePlatform()) {
-    return rawUrl;
-  }
-  
-  // Webb → Behöver proxy för Mixed Content
-  return tunnelOrProxy(rawUrl, options);
-}
-```
-
-### Steg 5: Konfigurera Native-plattformar
-```bash
-# Lägg till plattformar
-npx cap add ios
-npx cap add android
-
-# Bygg och synka
-npm run build
-npx cap sync
-
-# Kör på enhet/emulator
-npx cap run android
-npx cap run ios
+const path = urlObj.pathname + urlObj.search;
+streamUrl = `https://vpn.premiumvinted.se${path}`;
 ```
 
 ---
 
-## Ny Arkitektur (Hybrid Webb/Native)
+### Verifiering
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│                    PlayerManager                         │
-└─────────────────────────────────────────────────────────┘
-                           │
-            ┌──────────────┴──────────────┐
-            │                             │
-   Capacitor.isNativePlatform()?          │
-            │                             │
-          JA                            NEJ
-            │                             │
-            ▼                             ▼
-┌─────────────────────┐      ┌─────────────────────────┐
-│  NativeVideoPlayer  │      │     ShakaPlayer         │
-│                     │      │                         │
-│  - ExoPlayer (And)  │      │  - Proxy via Edge Fn    │
-│  - AVPlayer (iOS)   │      │  - HLS.js fallback      │
-│  - Direkt HTTP      │      │  - Mixed Content fix    │
-│  - Ingen CORS       │      │                         │
-│  - MPEG-TS native   │      │                         │
-└─────────────────────┘      └─────────────────────────┘
-         │                              │
-         │                              │
-         ▼                              ▼
-┌─────────────────────┐      ┌─────────────────────────┐
-│  RAW IPTV STREAM    │      │  PROXIED HTTPS STREAM   │
-│  http://IP/live/... │      │  stream-proxy?url=...   │
-└─────────────────────┘      └─────────────────────────┘
-```
+Efter ändringen:
+
+| Input | Före (Fel) | Efter (Rätt) |
+|-------|-----------|--------------|
+| `http://server.com:80/live/123.m3u8` | `https://vpn...:80/live/123.m3u8` | `https://vpn.../live/123.m3u8` |
+| `http://server.com/live/123.m3u8` | `https://vpn.../live/123.m3u8` | `https://vpn.../live/123.m3u8` |
+| `http://server.com:8080/live/123.m3u8` | `https://vpn...:8080/live/123.m3u8` | `https://vpn.../live/123.m3u8` |
 
 ---
 
-## Fördelar med Denna Approach
+## Teknisk sammanfattning
 
-1. **Samma kodbas** – React-appen fungerar på webb OCH som native app
-2. **Native prestanda** – ExoPlayer/AVPlayer är industristandard för IPTV
-3. **Inga proxy-problem** – Native-appen spelar strömmar direkt
-4. **App Store-ready** – Kan publiceras på Google Play och App Store
-5. **Offline-kapacitet** – Kan lägga till nedladdning av innehåll senare
-
----
-
-## Filer att Skapa/Ändra
-
-### Nya filer:
-1. `capacitor.config.ts` – Capacitor-konfiguration
-2. `src/components/player/NativeVideoPlayer.tsx` – Native player wrapper
-3. `src/hooks/useNativePlatform.tsx` – Hook för plattformsdetektering
-
-### Uppdatera:
-1. `src/components/player/PlayerManager.tsx` – Lägg till native-spelare
-2. `src/lib/xtream-api.ts` – Skippa proxy i native-läge
-3. `package.json` – Lägg till Capacitor-beroenden
-
----
-
-## Tekniska Krav
-
-- **iOS-utveckling:** Kräver Mac med Xcode installerat
-- **Android-utveckling:** Kräver Android Studio
-- **Testning:** Fysisk enhet rekommenderas för IPTV-strömmar
-
----
-
-## Sammanfattning
-Med Capacitor kan du behålla hela din nuvarande React-kodbas och lägga till ett tunt native-lager för videouppspelning. Detta ger dig det bästa av två världar: snabb webbutveckling med native IPTV-prestanda.
-
+- **1 fil** att ändra: `src/pages/LiveTV.tsx`
+- **3 rader** att modifiera (rad 128-130)
+- Använder samma approach som redan finns i `src/lib/cloudflare-rewrite.ts` (`extractPath` funktionen)
+- Inga nya beroenden
