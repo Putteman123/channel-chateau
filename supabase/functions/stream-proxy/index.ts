@@ -253,24 +253,31 @@ serve(async (req) => {
     
     console.log(`[stream-proxy] 🕵️ Stealth Mode: Chrome UA + Sec-Fetch headers`);
 
-    // Build URL list to try - prioritize HTTP for live streams (IPTV providers often block HTTPS)
+    // Build URL list to try - prioritize HTTP for live streams AND M3U fetches
+    // Many IPTV providers only support HTTP and reject HTTPS connections from datacenter IPs
     const isLiveStream = urlToFetch.includes('/live/') || urlToFetch.endsWith('.ts');
+    const isM3uFetch = urlToFetch.includes('type=m3u') || urlToFetch.includes('output=m3u') || 
+                       urlToFetch.includes('.m3u') || urlToFetch.includes('get.php');
+    const isIptvProvider = isLiveStream || isM3uFetch;
+    
     const urlsToTry: string[] = [];
     
     // If we have a cached URL, only try that (no protocol fallback needed)
     if (cachedFinalUrl) {
       urlsToTry.push(cachedFinalUrl);
     } else if (urlToFetch.startsWith("https://")) {
-      if (isLiveStream) {
+      // For IPTV providers, always try HTTP first (many block HTTPS from datacenters)
+      if (isIptvProvider) {
         urlsToTry.push(urlToFetch.replace("https://", "http://"));
-        urlsToTry.push(urlToFetch);
+        // Don't try HTTPS fallback for IPTV - it will likely fail with ECONNREFUSED
       } else {
         urlsToTry.push(urlToFetch);
         urlsToTry.push(urlToFetch.replace("https://", "http://"));
       }
     } else if (urlToFetch.startsWith("http://")) {
       urlsToTry.push(urlToFetch);
-      if (!isLiveStream) {
+      // Don't try HTTPS fallback for IPTV providers - they almost never support it
+      if (!isIptvProvider) {
         urlsToTry.push(urlToFetch.replace("http://", "https://"));
       }
     } else {
