@@ -18,7 +18,13 @@ import {
   isTsStream,
   hasMixedContentIssue,
 } from '@/lib/stream-utils';
-import { isCloudflareUrl, CLOUDFLARE_VPN_DOMAIN, getConnectionDisplayName } from '@/lib/cloudflare-rewrite';
+import { 
+  isCloudflareUrl, 
+  isSupabaseProxyUrl, 
+  isIpAddress,
+  CLOUDFLARE_VPN_DOMAIN, 
+  getConnectionDisplayName,
+} from '@/lib/cloudflare-rewrite';
 
 /** Custom HTTP headers for stream requests (from M3U #EXTVLCOPT) */
 export interface StreamHttpHeaders {
@@ -321,26 +327,21 @@ export function ShakaPlayer({
         return;
       }
 
-      // Check if using Cloudflare tunnel (new direct method)
+      // Check if using Cloudflare tunnel (for domain-based URLs)
       const isTunneled = isCloudflareUrl(effectiveSrc);
       
-      // Check if using old Supabase proxy (legacy)
-      const isSupabaseProxy = effectiveSrc.includes('/functions/v1/stream-proxy') && 
-                              effectiveSrc.includes('?url=');
+      // Check if using Supabase Edge Function proxy (for IP-based URLs)
+      const isEdgeProxy = isSupabaseProxyUrl(effectiveSrc);
       
       // Combined proxy status
-      const isProxied = isTunneled || isSupabaseProxy;
+      const isProxied = isTunneled || isEdgeProxy;
       
       // Determine connection type for display
-      const connectionType = isTunneled 
-        ? getConnectionDisplayName()  // "Secure Tunnel (Cloudflare)"
-        : isSupabaseProxy 
-          ? 'MITM Proxy (Supabase)' 
-          : 'Direct';
+      const connectionType = getConnectionDisplayName(effectiveSrc);
       
-      // Extract the original URL from proxy for display (legacy support)
+      // Extract the original URL from Supabase proxy for display
       let displayUrl = effectiveSrc;
-      if (isSupabaseProxy) {
+      if (isEdgeProxy) {
         try {
           const url = new URL(effectiveSrc);
           const originalUrl = url.searchParams.get('url');
@@ -390,7 +391,7 @@ export function ShakaPlayer({
       console.log('[ShakaPlayer] Connection:', connectionType);
       console.log('[ShakaPlayer] Effective URL:', effectiveSrc.substring(0, 80) + '...');
       console.log('[ShakaPlayer] Display URL:', displayUrl.substring(0, 60) + '...');
-      console.log('[ShakaPlayer] Is Tunneled:', isTunneled ? '✅ Yes (Cloudflare)' : '❌ No');
+      console.log('[ShakaPlayer] Is Tunneled:', isTunneled ? '✅ Cloudflare' : isEdgeProxy ? '✅ Edge Function' : '❌ No');
       console.log('[ShakaPlayer] URL Type:', urlType);
       if (hasMixedContent) {
         console.warn('[ShakaPlayer] ⚠️ Mixed Content detected! HTTP stream without tunnel.');
