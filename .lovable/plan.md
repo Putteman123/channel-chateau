@@ -1,94 +1,130 @@
 
-# Plan: Fixa Token-format och MITM Proxy för Fungerande Strömmar
+# Plan: Integrera Direct IP Streaming med Hybrid Proxy-approach
 
-## Problemanalys
+## Sammanfattning
+Strömmen via rå IP-adress (`http://185.245.0.183/live/play/.../79662`) fungerar i webbläsaren direkt men blockeras av Mixed Content i appen. Vi ska implementera en hybrid-approach där:
+1. Cloudflare-tunnel används för kända domäner (line.myox.me)
+2. Supabase Edge Function används för IP-adresser
+3. Player API-format (`/live/play/{token}/{id}`) används utan filändelse
 
-Jag har identifierat **orsaken** till att spelaren inte fungerar trots att "Testa proxy-nedladdning" visar en fungerande ström:
+## Teknisk Bakgrund
+Cloudflare DNS kan bara peka mot **en** IP-adress. När IPTV-leverantören använder olika backend-IP:er (t.ex. `185.245.0.183`) kan Cloudflare-tunneln inte dirigera dit. Supabase Edge Function fungerar som universell MITM-proxy för alla IP-adresser.
 
-### Token-format är FEL
+---
 
-**Din fungerande URL:**
+## Ändringar
+
+### 1. Uppdatera `src/lib/cloudflare-rewrite.ts`
+- Lägg till funktion `isIpAddress(url)` för att detektera rå IP-adresser
+- Modifiera `convertToTunnel()` för att **hoppa över IP-adresser**
+- Lägg till logik: "Om URL pekar mot IP → returnera oförändrad (ska gå via Edge Function)"
+
+### 2. Uppdatera `src/lib/xtream-api.ts`
+**Ny funktion `buildPlayerApiLiveUrl()`:**
+- Format: `/live/play/{base64_token}/{stream_id}` (ingen filändelse)
+- Token: `btoa(username + "/" + password)`
+
+**Uppdatera `buildLiveStreamUrl()`:**
+- **Fallback-logik:**
+  1. Om standard Xtream-format → Cloudflare tunnel (för kända domäner)
+  2. Om IP-adress → Supabase Edge Function proxy
+- Lägg till option `usePlayerApiFormat: boolean`
+
+**Ny funktion `tunnelOrProxyUrl()`:**
+- Detekterar om URL är IP-adress eller domän
+- IP → `stream-proxy?url=...`
+- Domän → `vpn.premiumvinted.se/...`
+
+### 3. Uppdatera `src/lib/stream-utils.ts`
+- Lägg till `isIpAddressUrl(url)` helper
+- Uppdatera `getPlaybackStrategy()` för att använda rätt proxy-metod
+
+### 4. Uppdatera `src/components/player/ShakaPlayer.tsx`
+- Uppdatera `diagnostics.connectionType` för att visa:
+  - "Cloudflare Tunnel" (för domäner via vpn.premiumvinted.se)
+  - "Edge Function Proxy" (för IP-adresser via stream-proxy)
+- Visa faktisk server-IP i debug-panelen
+
+### 5. Uppdatera `src/pages/ChannelPlayer.tsx`
+- Använd `usePlayerApiFormat` option om standard-format misslyckar
+- Fallback: testa Player API-format vid error
+
+---
+
+## Flödesdiagram (Ny Proxy-logik)
+
+```text
+┌─────────────────────────────────────────────────┐
+│           Inkommande Ström-URL                   │
+└─────────────────────────────────────────────────┘
+                        │
+                        ▼
+              ┌──────────────────┐
+              │  Är det en       │
+              │  IP-adress?      │
+              └──────────────────┘
+                   │         │
+                  JA        NEJ
+                   │         │
+                   ▼         ▼
+    ┌───────────────────┐  ┌────────────────────┐
+    │  Supabase Edge    │  │  Cloudflare Tunnel │
+    │  Function Proxy   │  │  (vpn.premiumv...) │
+    │                   │  │                    │
+    │  stream-proxy?    │  │  Extrahera path    │
+    │  url=http://IP/...│  │  och sätt på VPN   │
+    └───────────────────┘  └────────────────────┘
+                   │               │
+                   └───────┬───────┘
+                           ▼
+                  ┌─────────────────┐
+                  │  HTTPS Response │
+                  │  till spelaren  │
+                  └─────────────────┘
 ```
-http://185.245.0.183/live/play/UjNScU5Fd3dUbE0yVGxaSVVUZDZPR2xQY1M5dlNHdGlNRnBPTW5Fdk1VaEJUWGxrU1VrdlZseEVaejA9/79662
-```
 
-**Token som fungerar:** `UjNScU5Fd3dUbE0yVGxaSVVUZDZPR2xQY1M5dlNHdGlNRnBPTW5Fdk1VaEJUWGxrU1VrdlZseEVaejA9`
+---
 
-**Token som appen genererar:** `MWM4NTg2MWJhNS8xOTRjZGNhMTg4YzY=` (vilket är `base64(1c85861ba5/194cdca188c6)`)
+## Förväntade Resultat
+1. **IP-baserade strömmar fungerar** via Edge Function proxy
+2. **Domänbaserade strömmar** (line.myox.me) använder snabbare Cloudflare tunnel
+3. **Player API-format** används automatiskt vid behov
+4. **Debug-panel** visar korrekt anslutningstyp
 
-Leverantören använder en **dubbel base64-kodning** som ser ut att vara en hash av användaruppgifterna, inte bara `base64(username/password)`.
+---
 
-### Servern varierar också
+## Tekniska Detaljer
 
-Den fungerande URL:en använder IP-adressen `185.245.0.183` direkt - inte `line.myox.me`. Detta tyder på att IPTV-leverantören har flera servrar och den token som fungerar är bunden till en specifik server-IP.
-
-## Lösningsförslag
-
-Eftersom tokenet är genererat av leverantören (troligen via en autentiserings-API eller initial redirect), och vi inte kan återskapa det själva, är bästa lösningen att:
-
-### Alternativ A: Fånga Token från Ursprunglig Redirect (Rekommenderad)
-
-1. **Använd standard Xtream-formatet först** (`/live/username/password/streamid.ts`)
-2. **Stream-proxyn följer redirecten** och fångar den riktiga URL:en med token
-3. **Proxyn streamar från den slutliga IP-adressen** - detta fungerar redan!
-
-**Problem:** Proxyn får en 503 på den initiala URL:en. Vi behöver testa med `.ts`-format istället för Player API.
-
-### Alternativ B: Testa Original Xtream Format (Enklare)
-
-Istället för att använda `/live/play/{token}/` formatet, testa med standard Xtream:
-```
-http://line.myox.me/live/1c85861ba5/194cdca188c6/79662.ts
-```
-
-Detta kan trigga en 302 redirect till den fungerande IP-adressen som proxyn sedan följer.
-
-## Teknisk Implementation
-
-### 1. Uppdatera `buildLiveStreamUrl` i `src/lib/xtream-api.ts`
-
-Inaktivera Player API-formatet temporärt och använd standard Xtream-format:
-
+### IP-adress Detektering
 ```typescript
-export function buildLiveStreamUrl(
-  creds: XtreamCredentials, 
-  streamId: number, 
-  options: { useProxy?: boolean; preferTs?: boolean; forceHttp?: boolean; usePlayerApi?: boolean } = {}
-): string {
-  const { useProxy = true, preferTs = true, forceHttp = true, usePlayerApi = false } = options;
-  // ^^^ Sätt usePlayerApi = false som default
-  
-  // ... resten av logiken använder standard /live/username/password/streamid.ts
+function isIpAddress(url: string): boolean {
+  const hostname = new URL(url).hostname;
+  // IPv4: 185.245.0.183
+  // IPv6: [::1]
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || 
+         hostname.startsWith('[');
 }
 ```
 
-### 2. Verifiera att stream-proxy följer redirects korrekt
+### Hybrid Proxy Funktion
+```typescript
+function getProxiedUrl(originalUrl: string): string {
+  if (isIpAddress(originalUrl)) {
+    // IP-adress → Edge Function (universell proxy)
+    return `${SUPABASE_PROXY}?url=${encodeURIComponent(originalUrl)}`;
+  } else {
+    // Domän → Cloudflare tunnel (snabbare)
+    return convertToTunnel(originalUrl);
+  }
+}
+```
 
-Kontrollera att `redirect: 'follow'` verkligen följer 302-redirects till den slutliga IP-adressen.
-
-### 3. Lägg till diagnostik-loggning i proxyn
-
-Logga den slutliga URL:en efter redirect för att se om vi når rätt server.
-
-## Filer som ändras
-
-| Fil | Ändring |
-|-----|---------|
-| `src/lib/xtream-api.ts` | Sätt `usePlayerApi = false` som default, använd standard `.ts` format |
-| `supabase/functions/stream-proxy/index.ts` | Förbättra loggning av redirect-kedjan |
-
-## Alternativ Om Detta Inte Fungerar
-
-Om standard-formatet också returnerar 503/458:
-
-1. **Externt Token-API**: Vissa leverantörer har en `/get_token`-endpoint som returnerar det korrekta tokenet
-2. **Manuell Token-input**: Låt användaren ange den fungerande URL:en direkt (copy/paste från "Testa proxy-nedladdning")
-3. **Direct IP Mode**: Låt användaren konfigurera server-IP (`185.245.0.183`) separat från DNS-namnet
-
-## Sammanfattning
-
-Det huvudsakliga problemet är att **Player API-tokenet genereras fel** av vår kod. Lösningen är att:
-
-1. **Först testa** med standard Xtream-format (`.ts`-filer) via proxyn
-2. Proxyn följer redan redirects - det bör fungera om ursprungsförfrågan lyckas
-3. Om det fortfarande misslyckas behöver vi undersöka leverantörens token-generering
+### Player API URL Builder
+```typescript
+function buildPlayerApiLiveUrl(creds, streamId): string {
+  const token = btoa(`${creds.username}/${creds.password}`);
+  const server = extractHostFromUrl(creds.serverUrl);
+  // Ingen filändelse - servern returnerar HLS automatiskt
+  return `http://${server}/live/play/${token}/${streamId}`;
+}
+```
