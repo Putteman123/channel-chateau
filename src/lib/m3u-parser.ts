@@ -383,15 +383,33 @@ export async function parseM3uAsync(content: string): Promise<M3UParseResult> {
 /**
  * Fetch and parse M3U from URL (uses proxy if needed)
  */
+/**
+ * Normalize M3U URL to ensure HLS format
+ * Converts output=ts to output=m3u8 for browser compatibility
+ */
+export function normalizeM3uUrl(url: string): string {
+  // Replace output=ts with output=m3u8 for HLS compatibility
+  let normalized = url.replace(/([?&])output=ts(&|$)/i, '$1output=m3u8$2');
+  
+  // Also handle type=ts or type=m3u_plus scenarios
+  normalized = normalized.replace(/([?&])type=ts(&|$)/i, '$1type=m3u_plus$2');
+  
+  console.log('[M3U Parser] Normalized URL:', url.substring(0, 50), '→', normalized.substring(0, 50));
+  return normalized;
+}
+
 export async function fetchAndParseM3u(
   url: string, 
   useProxy: boolean = true
 ): Promise<M3UParseResult> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   
-  let fetchUrl = url;
+  // Normalize URL to ensure HLS format (output=m3u8 instead of ts)
+  const normalizedUrl = normalizeM3uUrl(url);
+  
+  let fetchUrl = normalizedUrl;
   if (useProxy && supabaseUrl) {
-    fetchUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(url)}`;
+    fetchUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(normalizedUrl)}`;
   }
 
   console.log('[M3U Parser] Fetching M3U from:', fetchUrl.substring(0, 80) + '...');

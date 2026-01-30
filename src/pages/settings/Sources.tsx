@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar, Wand2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar, Wand2, Tv, Film, Clapperboard } from 'lucide-react';
 import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
+import { useM3UChannelCount } from '@/hooks/useM3UChannelCount';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -27,6 +28,41 @@ import * as XtreamAPI from '@/lib/xtream-api';
 import { SubscriptionBadge } from '@/components/subscription/SubscriptionBadge';
 import { parseXtreamExpDate } from '@/lib/subscription-utils';
 import { buildXMLTVUrl } from '@/lib/xmltv-parser';
+
+// Component to display M3U channel count
+function M3UChannelStats({ m3uUrl }: { m3uUrl: string | null }) {
+  const { channelCount, isLoading } = useM3UChannelCount({ m3uUrl, enabled: !!m3uUrl });
+  
+  if (!m3uUrl) return null;
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Räknar kanaler...
+      </div>
+    );
+  }
+  
+  if (!channelCount) return null;
+  
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-xs">
+      <div className="flex items-center gap-1 text-muted-foreground">
+        <Tv className="h-3 w-3" />
+        <span>{channelCount.liveChannels} live</span>
+      </div>
+      <div className="flex items-center gap-1 text-muted-foreground">
+        <Film className="h-3 w-3" />
+        <span>{channelCount.movies} filmer</span>
+      </div>
+      <div className="flex items-center gap-1 text-muted-foreground">
+        <Clapperboard className="h-3 w-3" />
+        <span>{channelCount.series} serier</span>
+      </div>
+    </div>
+  );
+}
 
 // Xtream schema - with validation to prevent using proxy domain as server URL
 const xtreamSchema = z.object({
@@ -858,13 +894,23 @@ export default function Sources() {
                 </div>
               </CardHeader>
               <CardContent>
-                {/* Subscription Status */}
-                <div className="mb-4 flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <div className="text-sm font-medium">Abonnemangsstatus</div>
+                {/* M3U Channel Stats */}
+                {source.source_type === 'm3u' && (
+                  <div className="mb-4 rounded-lg border p-3">
+                    <div className="text-sm font-medium mb-2">Innehåll</div>
+                    <M3UChannelStats m3uUrl={source.m3u_url} />
                   </div>
-                  <SubscriptionBadge expiresAt={source.expires_at} />
-                </div>
+                )}
+
+                {/* Subscription Status - only for Xtream or M3U with expiry set */}
+                {(source.source_type === 'xtream' || source.expires_at) && (
+                  <div className="mb-4 flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">Abonnemangsstatus</div>
+                    </div>
+                    <SubscriptionBadge expiresAt={source.expires_at} />
+                  </div>
+                )}
 
                 <dl className="grid grid-cols-2 gap-2 text-sm">
                   {source.source_type === 'xtream' && source.username && (
