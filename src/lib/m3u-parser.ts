@@ -398,6 +398,34 @@ export function normalizeM3uUrl(url: string): string {
   return normalized;
 }
 
+/**
+ * Route HTTP URL through VPN tunnel + Supabase proxy for CORS
+ * This solves Mixed Content AND bypasses datacenter IP blocking
+ */
+function buildProxiedUrl(originalUrl: string, supabaseUrl: string): string {
+  // If already HTTPS, just wrap in proxy for CORS headers
+  if (originalUrl.startsWith('https://')) {
+    return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(originalUrl)}`;
+  }
+  
+  // For HTTP URLs: Route through VPN tunnel first, then wrap in proxy
+  try {
+    const urlObj = new URL(originalUrl);
+    // Extract path + query (avoids port :80 issue)
+    const path = urlObj.pathname + urlObj.search;
+    const vpnUrl = `https://vpn.premiumvinted.se${path}`;
+    
+    console.log('[M3U Parser] Routing HTTP through VPN tunnel:', originalUrl.substring(0, 50), '→ VPN');
+    
+    // Wrap VPN URL in Supabase proxy to add CORS headers
+    return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(vpnUrl)}`;
+  } catch {
+    // Fallback: just proxy the original URL
+    console.warn('[M3U Parser] Failed to parse URL, using direct proxy');
+    return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(originalUrl)}`;
+  }
+}
+
 export async function fetchAndParseM3u(
   url: string, 
   useProxy: boolean = true
@@ -409,10 +437,11 @@ export async function fetchAndParseM3u(
   
   let fetchUrl = normalizedUrl;
   if (useProxy && supabaseUrl) {
-    fetchUrl = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(normalizedUrl)}`;
+    // Route through VPN tunnel + proxy for CORS + bypass datacenter blocking
+    fetchUrl = buildProxiedUrl(normalizedUrl, supabaseUrl);
   }
 
-  console.log('[M3U Parser] Fetching M3U from:', fetchUrl.substring(0, 80) + '...');
+  console.log('[M3U Parser] Fetching M3U from:', fetchUrl.substring(0, 100) + '...');
   
   const response = await fetch(fetchUrl);
   if (!response.ok) {
