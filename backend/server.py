@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -90,6 +90,7 @@ class PlaylistResponse(BaseModel):
     channel_count: int
     movie_count: int
     series_count: int
+    status: str = "ready"  # ready, loading, error
     created_at: datetime
 
 class FavoriteCreate(BaseModel):
@@ -108,20 +109,6 @@ class FavoriteResponse(BaseModel):
     channel_group: Optional[str] = None
     content_type: str = "live"
     created_at: datetime
-
-class SeriesInfo(BaseModel):
-    id: str
-    name: str
-    cover: Optional[str] = None
-    plot: Optional[str] = None
-    cast: Optional[str] = None
-    genre: Optional[str] = None
-    rating: Optional[str] = None
-    category: Optional[str] = None
-
-class SeasonInfo(BaseModel):
-    season_number: int
-    episodes: List[dict]
 
 # ==================== HELPERS ====================
 
@@ -177,19 +164,19 @@ def parse_m3u(content: str) -> dict:
             }
             
             # Extract tvg-logo
-            logo_match = re.search(r'tvg-logo="([^"]+)"', line)
+            logo_match = re.search(r'tvg-logo="([^"]*)"', line)
             if logo_match:
-                channel_info['logo'] = logo_match.group(1)
+                channel_info['logo'] = logo_match.group(1) or None
             
             # Extract group-title
-            group_match = re.search(r'group-title="([^"]+)"', line)
+            group_match = re.search(r'group-title="([^"]*)"', line)
             if group_match:
-                channel_info['group'] = group_match.group(1)
+                channel_info['group'] = group_match.group(1) or 'Uncategorized'
             
             # Extract tvg-id for EPG
-            epg_match = re.search(r'tvg-id="([^"]+)"', line)
+            epg_match = re.search(r'tvg-id="([^"]*)"', line)
             if epg_match:
-                channel_info['epg_id'] = epg_match.group(1)
+                channel_info['epg_id'] = epg_match.group(1) or None
             
             # Extract channel name (after the last comma)
             name_match = re.search(r',(.+)$', line)
@@ -210,10 +197,10 @@ def parse_m3u(content: str) -> dict:
                 group_lower = channel_info['group'].lower()
                 url_lower = channel_info['url'].lower()
                 
-                if any(x in group_lower for x in ['movie', 'film', 'vod']) or '/movie/' in url_lower:
+                if any(x in group_lower for x in ['movie', 'film', 'vod', 'cinema', 'biograf']) or '/movie/' in url_lower:
                     channel_info['stream_type'] = 'movie'
                     movies.append(channel_info)
-                elif any(x in group_lower for x in ['series', 'serie', 'tv show', 'episode']) or '/series/' in url_lower:
+                elif any(x in group_lower for x in ['series', 'serie', 'tv show', 'episode', 'serier']) or '/series/' in url_lower:
                     channel_info['stream_type'] = 'series'
                     series.append(channel_info)
                 else:
@@ -228,127 +215,72 @@ def parse_m3u(content: str) -> dict:
         'series': series
     }
 
-async def fetch_xtream_data(server_url: str, username: str, password: str) -> dict:
-    """Fetch data from Xtream Codes API"""
-    base_url = server_url.rstrip('/')
-    
-    # Ensure proper URL format
-    if not base_url.startswith('http'):
-        base_url = 'http://' + base_url
-    
-    channels = []
-    movies = []
-    series = []
-    categories = {'live': {}, 'vod': {}, 'series': {}}
-    
-    async with aiohttp.ClientSession() as session:
-        timeout = aiohttp.ClientTimeout(total=60)
+async def process_m3u_playlist(playlist_id: str, user_id: str, content: str):
+    """Background task to process large M3U playlists"""
+    try:
+        logger.info(f"Processing playlist {playlist_id}")
         
-        # Fetch live categories
-        try:
-            url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_live_categories"
-            async with session.get(url, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for cat in data:
-                        categories['live'][str(cat.get('category_id', ''))] = cat.get('category_name', 'Uncategorized')
-        except Exception as e:
-            logger.warning(f"Error fetching live categories: {e}")
+        # Parse M3U content
+        parsed = parse_m3u(content)
         
-        # Fetch VOD categories
-        try:
-            url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_vod_categories"
-            async with session.get(url, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for cat in data:
-                        categories['vod'][str(cat.get('category_id', ''))] = cat.get('category_name', 'Uncategorized')
-        except Exception as e:
-            logger.warning(f"Error fetching VOD categories: {e}")
+        channel_count = len(parsed['channels'])
+        movie_count = len(parsed['movies'])
+        series_count = len(parsed['series'])
         
-        # Fetch Series categories
-        try:
-            url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_series_categories"
-            async with session.get(url, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for cat in data:
-                        categories['series'][str(cat.get('category_id', ''))] = cat.get('category_name', 'Uncategorized')
-        except Exception as e:
-            logger.warning(f"Error fetching series categories: {e}")
+        logger.info(f"Parsed {channel_count} channels, {movie_count} movies, {series_count} series")
         
-        # Fetch live streams
-        try:
-            url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_live_streams"
-            async with session.get(url, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for stream in data:
-                        cat_id = str(stream.get('category_id', ''))
-                        channels.append({
-                            'id': str(uuid.uuid4()),
-                            'stream_id': stream.get('stream_id'),
-                            'name': stream.get('name', 'Unknown'),
-                            'url': f"{base_url}/live/{username}/{password}/{stream.get('stream_id')}.m3u8",
-                            'logo': stream.get('stream_icon'),
-                            'group': categories['live'].get(cat_id, 'Uncategorized'),
-                            'epg_id': stream.get('epg_channel_id'),
-                            'stream_type': 'live'
-                        })
-        except Exception as e:
-            logger.error(f"Error fetching live streams: {e}")
+        # Delete existing channels for this playlist
+        await db.channels.delete_many({'playlist_id': playlist_id})
         
-        # Fetch VOD streams (movies)
-        try:
-            url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_vod_streams"
-            async with session.get(url, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for stream in data:
-                        cat_id = str(stream.get('category_id', ''))
-                        ext = stream.get('container_extension', 'mp4')
-                        movies.append({
-                            'id': str(uuid.uuid4()),
-                            'stream_id': stream.get('stream_id'),
-                            'name': stream.get('name', 'Unknown'),
-                            'url': f"{base_url}/movie/{username}/{password}/{stream.get('stream_id')}.{ext}",
-                            'logo': stream.get('stream_icon'),
-                            'group': categories['vod'].get(cat_id, 'Uncategorized'),
-                            'plot': stream.get('plot'),
-                            'rating': stream.get('rating'),
-                            'stream_type': 'movie'
-                        })
-        except Exception as e:
-            logger.error(f"Error fetching VOD streams: {e}")
+        # Insert channels in batches
+        batch_size = 1000
         
-        # Fetch Series
-        try:
-            url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_series"
-            async with session.get(url, timeout=timeout) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    for serie in data:
-                        cat_id = str(serie.get('category_id', ''))
-                        series.append({
-                            'id': str(uuid.uuid4()),
-                            'series_id': serie.get('series_id'),
-                            'name': serie.get('name', 'Unknown'),
-                            'logo': serie.get('cover'),
-                            'group': categories['series'].get(cat_id, 'Uncategorized'),
-                            'plot': serie.get('plot'),
-                            'cast': serie.get('cast'),
-                            'genre': serie.get('genre'),
-                            'rating': serie.get('rating'),
-                            'stream_type': 'series'
-                        })
-        except Exception as e:
-            logger.error(f"Error fetching series: {e}")
-    
-    return {
-        'channels': channels,
-        'movies': movies,
-        'series': series
-    }
+        # Process channels
+        for i in range(0, len(parsed['channels']), batch_size):
+            batch = parsed['channels'][i:i+batch_size]
+            for ch in batch:
+                ch['playlist_id'] = playlist_id
+                ch['user_id'] = user_id
+            if batch:
+                await db.channels.insert_many(batch)
+        
+        # Process movies
+        for i in range(0, len(parsed['movies']), batch_size):
+            batch = parsed['movies'][i:i+batch_size]
+            for ch in batch:
+                ch['playlist_id'] = playlist_id
+                ch['user_id'] = user_id
+            if batch:
+                await db.channels.insert_many(batch)
+        
+        # Process series
+        for i in range(0, len(parsed['series']), batch_size):
+            batch = parsed['series'][i:i+batch_size]
+            for ch in batch:
+                ch['playlist_id'] = playlist_id
+                ch['user_id'] = user_id
+            if batch:
+                await db.channels.insert_many(batch)
+        
+        # Update playlist with counts
+        await db.playlists.update_one(
+            {'id': playlist_id},
+            {'$set': {
+                'channel_count': channel_count,
+                'movie_count': movie_count,
+                'series_count': series_count,
+                'status': 'ready'
+            }}
+        )
+        
+        logger.info(f"Playlist {playlist_id} processing complete")
+        
+    except Exception as e:
+        logger.error(f"Error processing playlist {playlist_id}: {e}")
+        await db.playlists.update_one(
+            {'id': playlist_id},
+            {'$set': {'status': 'error', 'error_message': str(e)}}
+        )
 
 # ==================== AUTH ROUTES ====================
 
@@ -409,7 +341,7 @@ async def get_me(user=Depends(get_current_user)):
 # ==================== PLAYLIST ROUTES ====================
 
 @api_router.post("/playlists", response_model=PlaylistResponse)
-async def create_playlist(playlist_data: PlaylistCreate, user=Depends(get_current_user)):
+async def create_playlist(playlist_data: PlaylistCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Create a playlist from M3U content or URL"""
     content = playlist_data.content
     
@@ -417,95 +349,231 @@ async def create_playlist(playlist_data: PlaylistCreate, user=Depends(get_curren
     if playlist_data.url and not content:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(playlist_data.url, timeout=aiohttp.ClientTimeout(total=60)) as response:
+                async with session.get(playlist_data.url, timeout=aiohttp.ClientTimeout(total=120)) as response:
                     if response.status == 200:
                         content = await response.text()
                     else:
                         raise HTTPException(status_code=400, detail="Failed to fetch playlist from URL")
-        except Exception as e:
+        except aiohttp.ClientError as e:
             logger.error(f"Error fetching playlist: {e}")
             raise HTTPException(status_code=400, detail=f"Error fetching playlist: {str(e)}")
     
     if not content:
         raise HTTPException(status_code=400, detail="No playlist content provided")
     
-    # Parse M3U content
-    parsed = parse_m3u(content)
-    total_items = len(parsed['channels']) + len(parsed['movies']) + len(parsed['series'])
-    
-    if total_items == 0:
-        raise HTTPException(status_code=400, detail="No valid content found in playlist")
-    
+    # Create playlist record first
+    playlist_id = str(uuid.uuid4())
     playlist = {
-        'id': str(uuid.uuid4()),
+        'id': playlist_id,
         'user_id': user['id'],
         'name': playlist_data.name,
         'playlist_type': 'm3u',
         'url': playlist_data.url,
-        'channels': parsed['channels'],
-        'movies': parsed['movies'],
-        'series': parsed['series'],
+        'channel_count': 0,
+        'movie_count': 0,
+        'series_count': 0,
+        'status': 'loading',
         'created_at': datetime.utcnow()
     }
     await db.playlists.insert_one(playlist)
+    
+    # Process in background for large playlists
+    background_tasks.add_task(process_m3u_playlist, playlist_id, user['id'], content)
     
     return PlaylistResponse(
         id=playlist['id'],
         user_id=playlist['user_id'],
         name=playlist['name'],
         playlist_type='m3u',
-        channel_count=len(parsed['channels']),
-        movie_count=len(parsed['movies']),
-        series_count=len(parsed['series']),
+        channel_count=0,
+        movie_count=0,
+        series_count=0,
+        status='loading',
         created_at=playlist['created_at']
     )
 
 @api_router.post("/playlists/xtream", response_model=PlaylistResponse)
-async def create_xtream_playlist(xtream_data: XtreamCreate, user=Depends(get_current_user)):
+async def create_xtream_playlist(xtream_data: XtreamCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Create a playlist from Xtream Codes API"""
-    try:
-        data = await fetch_xtream_data(
-            xtream_data.server_url,
-            xtream_data.username,
-            xtream_data.password
-        )
-    except Exception as e:
-        logger.error(f"Error fetching Xtream data: {e}")
-        raise HTTPException(status_code=400, detail=f"Error connecting to Xtream server: {str(e)}")
+    base_url = xtream_data.server_url.rstrip('/')
+    if not base_url.startswith('http'):
+        base_url = 'http://' + base_url
     
-    total_items = len(data['channels']) + len(data['movies']) + len(data['series'])
-    
-    if total_items == 0:
-        raise HTTPException(status_code=400, detail="No content found. Check your credentials and server URL.")
-    
+    # Create playlist record first
+    playlist_id = str(uuid.uuid4())
     playlist = {
-        'id': str(uuid.uuid4()),
+        'id': playlist_id,
         'user_id': user['id'],
         'name': xtream_data.name,
         'playlist_type': 'xtream',
-        'xtream_server': xtream_data.server_url,
+        'xtream_server': base_url,
         'xtream_username': xtream_data.username,
         'xtream_password': xtream_data.password,
-        'channels': data['channels'],
-        'movies': data['movies'],
-        'series': data['series'],
+        'channel_count': 0,
+        'movie_count': 0,
+        'series_count': 0,
+        'status': 'loading',
         'created_at': datetime.utcnow()
     }
     await db.playlists.insert_one(playlist)
+    
+    # Process in background
+    background_tasks.add_task(
+        process_xtream_playlist, 
+        playlist_id, 
+        user['id'], 
+        base_url, 
+        xtream_data.username, 
+        xtream_data.password
+    )
     
     return PlaylistResponse(
         id=playlist['id'],
         user_id=playlist['user_id'],
         name=playlist['name'],
         playlist_type='xtream',
-        channel_count=len(data['channels']),
-        movie_count=len(data['movies']),
-        series_count=len(data['series']),
+        channel_count=0,
+        movie_count=0,
+        series_count=0,
+        status='loading',
         created_at=playlist['created_at']
     )
 
+async def process_xtream_playlist(playlist_id: str, user_id: str, base_url: str, username: str, password: str):
+    """Background task to process Xtream playlists"""
+    try:
+        logger.info(f"Processing Xtream playlist {playlist_id}")
+        
+        channels = []
+        movies = []
+        series = []
+        categories = {'live': {}, 'vod': {}, 'series': {}}
+        
+        async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=120)
+            
+            # Fetch categories
+            for cat_type, action in [('live', 'get_live_categories'), ('vod', 'get_vod_categories'), ('series', 'get_series_categories')]:
+                try:
+                    url = f"{base_url}/player_api.php?username={username}&password={password}&action={action}"
+                    async with session.get(url, timeout=timeout) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            if isinstance(data, list):
+                                for cat in data:
+                                    categories[cat_type][str(cat.get('category_id', ''))] = cat.get('category_name', 'Uncategorized')
+                except Exception as e:
+                    logger.warning(f"Error fetching {cat_type} categories: {e}")
+            
+            # Fetch live streams
+            try:
+                url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_live_streams"
+                async with session.get(url, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if isinstance(data, list):
+                            for stream in data:
+                                cat_id = str(stream.get('category_id', ''))
+                                channels.append({
+                                    'id': str(uuid.uuid4()),
+                                    'playlist_id': playlist_id,
+                                    'user_id': user_id,
+                                    'stream_id': stream.get('stream_id'),
+                                    'name': stream.get('name', 'Unknown'),
+                                    'url': f"{base_url}/live/{username}/{password}/{stream.get('stream_id')}.m3u8",
+                                    'logo': stream.get('stream_icon'),
+                                    'group': categories['live'].get(cat_id, 'Uncategorized'),
+                                    'epg_id': stream.get('epg_channel_id'),
+                                    'stream_type': 'live'
+                                })
+            except Exception as e:
+                logger.error(f"Error fetching live streams: {e}")
+            
+            # Fetch VOD
+            try:
+                url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_vod_streams"
+                async with session.get(url, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if isinstance(data, list):
+                            for stream in data:
+                                cat_id = str(stream.get('category_id', ''))
+                                ext = stream.get('container_extension', 'mp4')
+                                movies.append({
+                                    'id': str(uuid.uuid4()),
+                                    'playlist_id': playlist_id,
+                                    'user_id': user_id,
+                                    'stream_id': stream.get('stream_id'),
+                                    'name': stream.get('name', 'Unknown'),
+                                    'url': f"{base_url}/movie/{username}/{password}/{stream.get('stream_id')}.{ext}",
+                                    'logo': stream.get('stream_icon'),
+                                    'group': categories['vod'].get(cat_id, 'Uncategorized'),
+                                    'plot': stream.get('plot'),
+                                    'rating': stream.get('rating'),
+                                    'stream_type': 'movie'
+                                })
+            except Exception as e:
+                logger.error(f"Error fetching VOD: {e}")
+            
+            # Fetch Series
+            try:
+                url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_series"
+                async with session.get(url, timeout=timeout) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if isinstance(data, list):
+                            for serie in data:
+                                cat_id = str(serie.get('category_id', ''))
+                                series.append({
+                                    'id': str(uuid.uuid4()),
+                                    'playlist_id': playlist_id,
+                                    'user_id': user_id,
+                                    'series_id': serie.get('series_id'),
+                                    'name': serie.get('name', 'Unknown'),
+                                    'logo': serie.get('cover'),
+                                    'group': categories['series'].get(cat_id, 'Uncategorized'),
+                                    'plot': serie.get('plot'),
+                                    'cast': serie.get('cast'),
+                                    'genre': serie.get('genre'),
+                                    'rating': serie.get('rating'),
+                                    'stream_type': 'series'
+                                })
+            except Exception as e:
+                logger.error(f"Error fetching series: {e}")
+        
+        # Delete existing channels for this playlist
+        await db.channels.delete_many({'playlist_id': playlist_id})
+        
+        # Insert in batches
+        batch_size = 1000
+        for items in [channels, movies, series]:
+            for i in range(0, len(items), batch_size):
+                batch = items[i:i+batch_size]
+                if batch:
+                    await db.channels.insert_many(batch)
+        
+        # Update playlist
+        await db.playlists.update_one(
+            {'id': playlist_id},
+            {'$set': {
+                'channel_count': len(channels),
+                'movie_count': len(movies),
+                'series_count': len(series),
+                'status': 'ready'
+            }}
+        )
+        
+        logger.info(f"Xtream playlist {playlist_id} complete: {len(channels)} channels, {len(movies)} movies, {len(series)} series")
+        
+    except Exception as e:
+        logger.error(f"Error processing Xtream playlist {playlist_id}: {e}")
+        await db.playlists.update_one(
+            {'id': playlist_id},
+            {'$set': {'status': 'error', 'error_message': str(e)}}
+        )
+
 @api_router.post("/playlists/{playlist_id}/refresh")
-async def refresh_playlist(playlist_id: str, user=Depends(get_current_user)):
+async def refresh_playlist(playlist_id: str, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """Refresh an Xtream playlist to get updated content"""
     playlist = await db.playlists.find_one({'id': playlist_id, 'user_id': user['id']})
     if not playlist:
@@ -514,31 +582,23 @@ async def refresh_playlist(playlist_id: str, user=Depends(get_current_user)):
     if playlist.get('playlist_type') != 'xtream':
         raise HTTPException(status_code=400, detail="Only Xtream playlists can be refreshed")
     
-    try:
-        data = await fetch_xtream_data(
-            playlist['xtream_server'],
-            playlist['xtream_username'],
-            playlist['xtream_password']
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error refreshing playlist: {str(e)}")
-    
+    # Update status
     await db.playlists.update_one(
         {'id': playlist_id},
-        {'$set': {
-            'channels': data['channels'],
-            'movies': data['movies'],
-            'series': data['series'],
-            'updated_at': datetime.utcnow()
-        }}
+        {'$set': {'status': 'loading'}}
     )
     
-    return {
-        "message": "Playlist refreshed",
-        "channel_count": len(data['channels']),
-        "movie_count": len(data['movies']),
-        "series_count": len(data['series'])
-    }
+    # Process in background
+    background_tasks.add_task(
+        process_xtream_playlist,
+        playlist_id,
+        user['id'],
+        playlist['xtream_server'],
+        playlist['xtream_username'],
+        playlist['xtream_password']
+    )
+    
+    return {"message": "Refresh started", "status": "loading"}
 
 @api_router.get("/playlists", response_model=List[PlaylistResponse])
 async def get_playlists(user=Depends(get_current_user)):
@@ -549,9 +609,10 @@ async def get_playlists(user=Depends(get_current_user)):
             user_id=p['user_id'],
             name=p['name'],
             playlist_type=p.get('playlist_type', 'm3u'),
-            channel_count=len(p.get('channels', [])),
-            movie_count=len(p.get('movies', [])),
-            series_count=len(p.get('series', [])),
+            channel_count=p.get('channel_count', 0),
+            movie_count=p.get('movie_count', 0),
+            series_count=p.get('series_count', 0),
+            status=p.get('status', 'ready'),
             created_at=p['created_at']
         )
         for p in playlists
@@ -563,29 +624,35 @@ async def get_playlist_channels(
     search: Optional[str] = None,
     group: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 50,
     user=Depends(get_current_user)
 ):
     playlist = await db.playlists.find_one({'id': playlist_id, 'user_id': user['id']})
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
     
-    channels = playlist.get('channels', [])
+    # Build query
+    query = {'playlist_id': playlist_id, 'stream_type': 'live'}
     
-    # Filter by search query
     if search:
-        search_lower = search.lower()
-        channels = [ch for ch in channels if search_lower in ch['name'].lower()]
+        query['name'] = {'$regex': search, '$options': 'i'}
     
-    # Filter by group
     if group:
-        channels = [ch for ch in channels if ch.get('group') == group]
+        query['group'] = group
     
-    total = len(channels)
+    # Get total count
+    total = await db.channels.count_documents(query)
+    
+    # Get items
+    items = await db.channels.find(query).skip(skip).limit(limit).to_list(limit)
+    
+    # Remove MongoDB _id from response
+    for item in items:
+        item.pop('_id', None)
     
     return {
         "total": total,
-        "items": channels[skip:skip + limit]
+        "items": items
     }
 
 @api_router.get("/playlists/{playlist_id}/movies")
@@ -594,29 +661,30 @@ async def get_playlist_movies(
     search: Optional[str] = None,
     group: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 50,
     user=Depends(get_current_user)
 ):
     playlist = await db.playlists.find_one({'id': playlist_id, 'user_id': user['id']})
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
     
-    movies = playlist.get('movies', [])
+    query = {'playlist_id': playlist_id, 'stream_type': 'movie'}
     
-    # Filter by search query
     if search:
-        search_lower = search.lower()
-        movies = [m for m in movies if search_lower in m['name'].lower()]
+        query['name'] = {'$regex': search, '$options': 'i'}
     
-    # Filter by group
     if group:
-        movies = [m for m in movies if m.get('group') == group]
+        query['group'] = group
     
-    total = len(movies)
+    total = await db.channels.count_documents(query)
+    items = await db.channels.find(query).skip(skip).limit(limit).to_list(limit)
+    
+    for item in items:
+        item.pop('_id', None)
     
     return {
         "total": total,
-        "items": movies[skip:skip + limit]
+        "items": items
     }
 
 @api_router.get("/playlists/{playlist_id}/series")
@@ -625,29 +693,30 @@ async def get_playlist_series(
     search: Optional[str] = None,
     group: Optional[str] = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 50,
     user=Depends(get_current_user)
 ):
     playlist = await db.playlists.find_one({'id': playlist_id, 'user_id': user['id']})
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
     
-    series = playlist.get('series', [])
+    query = {'playlist_id': playlist_id, 'stream_type': 'series'}
     
-    # Filter by search query
     if search:
-        search_lower = search.lower()
-        series = [s for s in series if search_lower in s['name'].lower()]
+        query['name'] = {'$regex': search, '$options': 'i'}
     
-    # Filter by group
     if group:
-        series = [s for s in series if s.get('group') == group]
+        query['group'] = group
     
-    total = len(series)
+    total = await db.channels.count_documents(query)
+    items = await db.channels.find(query).skip(skip).limit(limit).to_list(limit)
+    
+    for item in items:
+        item.pop('_id', None)
     
     return {
         "total": total,
-        "items": series[skip:skip + limit]
+        "items": items
     }
 
 @api_router.get("/playlists/{playlist_id}/series/{series_id}/episodes")
@@ -664,52 +733,48 @@ async def get_series_episodes(
     if playlist.get('playlist_type') != 'xtream':
         raise HTTPException(status_code=400, detail="Episodes only available for Xtream playlists")
     
-    # Find the series
-    series_item = None
-    for s in playlist.get('series', []):
-        if s['id'] == series_id or str(s.get('series_id')) == series_id:
-            series_item = s
-            break
-    
-    if not series_item:
-        raise HTTPException(status_code=404, detail="Series not found")
-    
-    xtream_series_id = series_item.get('series_id')
-    if not xtream_series_id:
-        raise HTTPException(status_code=400, detail="Series ID not available")
-    
-    base_url = playlist['xtream_server'].rstrip('/')
+    base_url = playlist['xtream_server']
     username = playlist['xtream_username']
     password = playlist['xtream_password']
     
     async with aiohttp.ClientSession() as session:
-        url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_series_info&series_id={xtream_series_id}"
+        url = f"{base_url}/player_api.php?username={username}&password={password}&action=get_series_info&series_id={series_id}"
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
             if response.status == 200:
                 data = await response.json()
-                episodes_data = data.get('episodes', {})
+                
+                # Handle different response formats
+                if isinstance(data, dict):
+                    episodes_data = data.get('episodes', {})
+                    info = data.get('info', {})
+                else:
+                    episodes_data = {}
+                    info = {}
+                
                 seasons = []
                 
-                for season_num, episodes in episodes_data.items():
-                    season_episodes = []
-                    for ep in episodes:
-                        ext = ep.get('container_extension', 'mp4')
-                        season_episodes.append({
-                            'id': ep.get('id'),
-                            'episode_num': ep.get('episode_num'),
-                            'title': ep.get('title', f"Episode {ep.get('episode_num')}"),
-                            'plot': ep.get('plot'),
-                            'duration': ep.get('duration'),
-                            'url': f"{base_url}/series/{username}/{password}/{ep.get('id')}.{ext}"
+                if isinstance(episodes_data, dict):
+                    for season_num, episodes in episodes_data.items():
+                        season_episodes = []
+                        if isinstance(episodes, list):
+                            for ep in episodes:
+                                ext = ep.get('container_extension', 'mp4')
+                                season_episodes.append({
+                                    'id': ep.get('id'),
+                                    'episode_num': ep.get('episode_num'),
+                                    'title': ep.get('title', f"Episode {ep.get('episode_num')}"),
+                                    'plot': ep.get('plot'),
+                                    'duration': ep.get('duration'),
+                                    'url': f"{base_url}/series/{username}/{password}/{ep.get('id')}.{ext}"
+                                })
+                        seasons.append({
+                            'season_number': int(season_num),
+                            'episodes': season_episodes
                         })
-                    seasons.append({
-                        'season_number': int(season_num),
-                        'episodes': season_episodes
-                    })
                 
                 seasons.sort(key=lambda x: x['season_number'])
                 return {
-                    'series_info': data.get('info', {}),
+                    'series_info': info,
                     'seasons': seasons
                 }
             else:
@@ -721,27 +786,30 @@ async def get_playlist_groups(playlist_id: str, content_type: str, user=Depends(
     if not playlist:
         raise HTTPException(status_code=404, detail="Playlist not found")
     
-    if content_type == 'live':
-        items = playlist.get('channels', [])
-    elif content_type == 'movie':
-        items = playlist.get('movies', [])
-    elif content_type == 'series':
-        items = playlist.get('series', [])
-    else:
+    stream_type_map = {
+        'live': 'live',
+        'movie': 'movie',
+        'series': 'series'
+    }
+    
+    stream_type = stream_type_map.get(content_type)
+    if not stream_type:
         raise HTTPException(status_code=400, detail="Invalid content type")
     
-    groups = set()
-    for item in items:
-        if item.get('group'):
-            groups.add(item['group'])
+    # Get distinct groups
+    groups = await db.channels.distinct('group', {'playlist_id': playlist_id, 'stream_type': stream_type})
     
-    return sorted(list(groups))
+    return sorted([g for g in groups if g])
 
 @api_router.delete("/playlists/{playlist_id}")
 async def delete_playlist(playlist_id: str, user=Depends(get_current_user)):
     result = await db.playlists.delete_one({'id': playlist_id, 'user_id': user['id']})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Playlist not found")
+    
+    # Also delete associated channels
+    await db.channels.delete_many({'playlist_id': playlist_id})
+    
     return {"message": "Playlist deleted"}
 
 # ==================== FAVORITES ROUTES ====================
@@ -813,6 +881,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create indexes on startup
+@app.on_event("startup")
+async def create_indexes():
+    try:
+        await db.channels.create_index([("playlist_id", 1), ("stream_type", 1)])
+        await db.channels.create_index([("playlist_id", 1), ("name", 1)])
+        await db.channels.create_index([("playlist_id", 1), ("group", 1)])
+        logger.info("Database indexes created")
+    except Exception as e:
+        logger.error(f"Error creating indexes: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
