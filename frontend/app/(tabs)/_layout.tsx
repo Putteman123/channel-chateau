@@ -20,7 +20,7 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '500',
         },
       }}
@@ -28,9 +28,27 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Kanaler',
+          title: 'TV',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="tv" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="movies"
+        options={{
+          title: 'Filmer',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="film" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="series"
+        options={{
+          title: 'Serier',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="albums" size={size} color={color} />
           ),
         }}
       />

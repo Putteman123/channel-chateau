@@ -10,35 +10,42 @@ import {
   RefreshControl,
   Image,
   Alert,
+  Dimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/hooks/useTheme';
 import api from '../../src/services/api';
 
-interface Channel {
+interface Movie {
   id: string;
   name: string;
   url: string;
   logo?: string;
   group?: string;
+  plot?: string;
+  rating?: string;
 }
 
 interface Playlist {
   id: string;
   name: string;
-  channel_count: number;
+  movie_count: number;
 }
 
-export default function ChannelsScreen() {
+const { width } = Dimensions.get('window');
+const POSTER_WIDTH = (width - 48) / 3;
+const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
+
+export default function MoviesScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<string | null>(null);
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [totalChannels, setTotalChannels] = useState(0);
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [totalMovies, setTotalMovies] = useState(0);
   const [groups, setGroups] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,18 +54,20 @@ export default function ChannelsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 30;
 
-  useEffect(() => {
-    loadPlaylists();
-    loadFavorites();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadPlaylists();
+      loadFavorites();
+    }, [])
+  );
 
   useEffect(() => {
     if (selectedPlaylist) {
       setPage(0);
-      setChannels([]);
-      loadChannels(0);
+      setMovies([]);
+      loadMovies(0);
       loadGroups();
     }
   }, [selectedPlaylist, selectedGroup, searchQuery]);
@@ -66,9 +75,10 @@ export default function ChannelsScreen() {
   const loadPlaylists = async () => {
     try {
       const response = await api.get('/api/playlists');
-      setPlaylists(response.data);
-      if (response.data.length > 0 && !selectedPlaylist) {
-        setSelectedPlaylist(response.data[0].id);
+      const playlistsWithMovies = response.data.filter((p: Playlist) => p.movie_count > 0);
+      setPlaylists(playlistsWithMovies);
+      if (playlistsWithMovies.length > 0 && !selectedPlaylist) {
+        setSelectedPlaylist(playlistsWithMovies[0].id);
       }
     } catch (error) {
       console.error('Error loading playlists:', error);
@@ -77,7 +87,7 @@ export default function ChannelsScreen() {
     }
   };
 
-  const loadChannels = async (pageNum: number) => {
+  const loadMovies = async (pageNum: number) => {
     if (!selectedPlaylist) return;
     
     try {
@@ -88,17 +98,17 @@ export default function ChannelsScreen() {
       if (searchQuery) params.search = searchQuery;
       if (selectedGroup) params.group = selectedGroup;
       
-      const response = await api.get(`/api/playlists/${selectedPlaylist}/channels`, { params });
-      const newChannels = response.data.items || response.data;
-      setTotalChannels(response.data.total || newChannels.length);
+      const response = await api.get(`/api/playlists/${selectedPlaylist}/movies`, { params });
+      const newMovies = response.data.items || response.data;
+      setTotalMovies(response.data.total || newMovies.length);
       
       if (pageNum === 0) {
-        setChannels(newChannels);
+        setMovies(newMovies);
       } else {
-        setChannels(prev => [...prev, ...newChannels]);
+        setMovies(prev => [...prev, ...newMovies]);
       }
     } catch (error) {
-      console.error('Error loading channels:', error);
+      console.error('Error loading movies:', error);
     } finally {
       setIsLoadingMore(false);
     }
@@ -108,7 +118,7 @@ export default function ChannelsScreen() {
     if (!selectedPlaylist) return;
     
     try {
-      const response = await api.get(`/api/playlists/${selectedPlaylist}/groups/live`);
+      const response = await api.get(`/api/playlists/${selectedPlaylist}/groups/movie`);
       setGroups(response.data);
     } catch (error) {
       console.error('Error loading groups:', error);
@@ -117,7 +127,7 @@ export default function ChannelsScreen() {
 
   const loadFavorites = async () => {
     try {
-      const response = await api.get('/api/favorites?content_type=live');
+      const response = await api.get('/api/favorites?content_type=movie');
       const favUrls = new Set(response.data.map((f: any) => f.channel_url));
       setFavorites(favUrls);
     } catch (error) {
@@ -125,26 +135,26 @@ export default function ChannelsScreen() {
     }
   };
 
-  const toggleFavorite = async (channel: Channel) => {
-    const isFav = favorites.has(channel.url);
+  const toggleFavorite = async (movie: Movie) => {
+    const isFav = favorites.has(movie.url);
     
     try {
       if (isFav) {
-        await api.delete(`/api/favorites/by-url/${encodeURIComponent(channel.url)}`);
+        await api.delete(`/api/favorites/by-url/${encodeURIComponent(movie.url)}`);
         setFavorites(prev => {
           const newSet = new Set(prev);
-          newSet.delete(channel.url);
+          newSet.delete(movie.url);
           return newSet;
         });
       } else {
         await api.post('/api/favorites', {
-          channel_name: channel.name,
-          channel_url: channel.url,
-          channel_logo: channel.logo,
-          channel_group: channel.group,
-          content_type: 'live',
+          channel_name: movie.name,
+          channel_url: movie.url,
+          channel_logo: movie.logo,
+          channel_group: movie.group,
+          content_type: 'movie',
         });
-        setFavorites(prev => new Set([...prev, channel.url]));
+        setFavorites(prev => new Set([...prev, movie.url]));
       }
     } catch (error: any) {
       Alert.alert('Fel', error.response?.data?.detail || 'Kunde inte uppdatera favoriter');
@@ -156,65 +166,61 @@ export default function ChannelsScreen() {
     await Promise.all([loadPlaylists(), loadFavorites()]);
     if (selectedPlaylist) {
       setPage(0);
-      await loadChannels(0);
+      await loadMovies(0);
     }
     setRefreshing(false);
   }, [selectedPlaylist]);
 
   const loadMore = () => {
-    if (isLoadingMore || channels.length >= totalChannels) return;
+    if (isLoadingMore || movies.length >= totalMovies) return;
     setIsLoadingMore(true);
     const nextPage = page + 1;
     setPage(nextPage);
-    loadChannels(nextPage);
+    loadMovies(nextPage);
   };
 
-  const playChannel = (channel: Channel) => {
+  const playMovie = (movie: Movie) => {
     router.push({
       pathname: '/player',
       params: {
-        url: channel.url,
-        name: channel.name,
-        logo: channel.logo || '',
+        url: movie.url,
+        name: movie.name,
+        logo: movie.logo || '',
       },
     });
   };
 
-  const renderChannel = ({ item }: { item: Channel }) => (
+  const renderMovie = ({ item }: { item: Movie }) => (
     <TouchableOpacity
-      style={[styles.channelItem, { backgroundColor: colors.surface }]}
-      onPress={() => playChannel(item)}
+      style={[styles.movieItem, { backgroundColor: colors.surface }]}
+      onPress={() => playMovie(item)}
       activeOpacity={0.7}
     >
-      <View style={[styles.channelLogo, { backgroundColor: colors.surfaceVariant }]}>
+      <View style={[styles.posterContainer, { backgroundColor: colors.surfaceVariant }]}>
         {item.logo ? (
-          <Image source={{ uri: item.logo }} style={styles.logoImage} resizeMode="contain" />
+          <Image source={{ uri: item.logo }} style={styles.poster} resizeMode="cover" />
         ) : (
-          <Ionicons name="tv" size={24} color={colors.textMuted} />
+          <View style={styles.posterPlaceholder}>
+            <Ionicons name="film" size={32} color={colors.textMuted} />
+          </View>
         )}
+        <TouchableOpacity
+          style={[styles.favoriteOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+          onPress={() => toggleFavorite(item)}
+        >
+          <Ionicons
+            name={favorites.has(item.url) ? 'heart' : 'heart-outline'}
+            size={20}
+            color={favorites.has(item.url) ? '#ff4444' : '#ffffff'}
+          />
+        </TouchableOpacity>
+        <View style={styles.playOverlay}>
+          <Ionicons name="play-circle" size={40} color="rgba(255,255,255,0.9)" />
+        </View>
       </View>
-      <View style={styles.channelInfo}>
-        <Text style={[styles.channelName, { color: colors.text }]} numberOfLines={1}>
-          {item.name}
-        </Text>
-        {item.group && (
-          <Text style={[styles.channelGroup, { color: colors.textSecondary }]} numberOfLines={1}>
-            {item.group}
-          </Text>
-        )}
-      </View>
-      <TouchableOpacity
-        style={styles.favoriteButton}
-        onPress={() => toggleFavorite(item)}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Ionicons
-          name={favorites.has(item.url) ? 'heart' : 'heart-outline'}
-          size={24}
-          color={favorites.has(item.url) ? colors.error : colors.textMuted}
-        />
-      </TouchableOpacity>
-      <Ionicons name="play-circle" size={32} color={colors.primary} />
+      <Text style={[styles.movieTitle, { color: colors.text }]} numberOfLines={2}>
+        {item.name}
+      </Text>
     </TouchableOpacity>
   );
 
@@ -262,20 +268,13 @@ export default function ChannelsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.emptyContainer}>
-          <Ionicons name="list" size={64} color={colors.textMuted} />
+          <Ionicons name="film-outline" size={64} color={colors.textMuted} />
           <Text style={[styles.emptyTitle, { color: colors.text }]}>
-            Inga spellistor
+            Inga filmer
           </Text>
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-            Lägg till en spellista för att börja titta
+            Lägg till en spellista med filmer för att börja titta
           </Text>
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
-            onPress={() => router.push('/(tabs)/playlists')}
-          >
-            <Ionicons name="add" size={24} color="#ffffff" />
-            <Text style={styles.addButtonText}>Lägg till spellista</Text>
-          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -284,9 +283,9 @@ export default function ChannelsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>TV-Kanaler</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Filmer</Text>
         <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-          {totalChannels} kanaler
+          {totalMovies} filmer
         </Text>
       </View>
 
@@ -294,7 +293,7 @@ export default function ChannelsScreen() {
         <Ionicons name="search" size={20} color={colors.textMuted} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
-          placeholder="Sök kanaler..."
+          placeholder="Sök filmer..."
           placeholderTextColor={colors.textMuted}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -309,10 +308,11 @@ export default function ChannelsScreen() {
       {groups.length > 0 && renderGroupFilter()}
 
       <FlatList
-        data={channels}
+        data={movies}
         keyExtractor={(item) => item.id}
-        renderItem={renderChannel}
-        contentContainerStyle={styles.listContent}
+        renderItem={renderMovie}
+        numColumns={3}
+        contentContainerStyle={styles.gridContent}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         refreshControl={
@@ -332,7 +332,7 @@ export default function ChannelsScreen() {
         ListEmptyComponent={
           <View style={styles.emptyList}>
             <Text style={[styles.emptyListText, { color: colors.textSecondary }]}>
-              Inga kanaler hittades
+              Inga filmer hittades
             </Text>
           </View>
         }
@@ -393,43 +393,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  listContent: {
-    padding: 16,
-    paddingTop: 4,
+  gridContent: {
+    paddingHorizontal: 12,
   },
-  channelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  channelLogo: {
-    width: 50,
-    height: 50,
+  movieItem: {
+    width: POSTER_WIDTH,
+    marginHorizontal: 4,
+    marginBottom: 16,
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
     overflow: 'hidden',
   },
-  logoImage: {
+  posterContainer: {
+    width: '100%',
+    height: POSTER_HEIGHT,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  poster: {
     width: '100%',
     height: '100%',
   },
-  channelInfo: {
+  posterPlaceholder: {
     flex: 1,
-    marginLeft: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  channelName: {
-    fontSize: 16,
-    fontWeight: '600',
+  favoriteOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  channelGroup: {
-    fontSize: 13,
-    marginTop: 2,
+  playOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  favoriteButton: {
-    padding: 8,
+  movieTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 8,
+    paddingHorizontal: 4,
   },
   emptyContainer: {
     flex: 1,
@@ -447,20 +460,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 24,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 24,
-  },
-  addButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
   emptyList: {
     padding: 32,

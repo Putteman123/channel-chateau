@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Image,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +23,12 @@ interface Favorite {
   channel_url: string;
   channel_logo?: string;
   channel_group?: string;
+  content_type: string;
 }
+
+const { width } = Dimensions.get('window');
+const POSTER_WIDTH = (width - 48) / 3;
+const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
 
 export default function FavoritesScreen() {
   const router = useRouter();
@@ -31,6 +37,7 @@ export default function FavoritesScreen() {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'live' | 'movie' | 'series'>('live');
 
   useFocusEffect(
     useCallback(() => {
@@ -77,7 +84,7 @@ export default function FavoritesScreen() {
     setRefreshing(false);
   }, []);
 
-  const playChannel = (favorite: Favorite) => {
+  const playContent = (favorite: Favorite) => {
     router.push({
       pathname: '/player',
       params: {
@@ -88,10 +95,12 @@ export default function FavoritesScreen() {
     });
   };
 
-  const renderFavorite = ({ item }: { item: Favorite }) => (
+  const filteredFavorites = favorites.filter(f => f.content_type === activeTab);
+
+  const renderChannelItem = ({ item }: { item: Favorite }) => (
     <TouchableOpacity
       style={[styles.channelItem, { backgroundColor: colors.surface }]}
-      onPress={() => playChannel(item)}
+      onPress={() => playContent(item)}
       activeOpacity={0.7}
     >
       <View style={[styles.channelLogo, { backgroundColor: colors.surfaceVariant }]}>
@@ -122,6 +131,42 @@ export default function FavoritesScreen() {
     </TouchableOpacity>
   );
 
+  const renderGridItem = ({ item }: { item: Favorite }) => (
+    <TouchableOpacity
+      style={[styles.gridItem, { backgroundColor: colors.surface }]}
+      onPress={() => playContent(item)}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.posterContainer, { backgroundColor: colors.surfaceVariant }]}>
+        {item.channel_logo ? (
+          <Image source={{ uri: item.channel_logo }} style={styles.poster} resizeMode="cover" />
+        ) : (
+          <View style={styles.posterPlaceholder}>
+            <Ionicons name={activeTab === 'movie' ? 'film' : 'albums'} size={32} color={colors.textMuted} />
+          </View>
+        )}
+        <TouchableOpacity
+          style={[styles.favoriteOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+          onPress={() => removeFavorite(item)}
+        >
+          <Ionicons name="heart" size={20} color="#ff4444" />
+        </TouchableOpacity>
+        <View style={styles.playOverlay}>
+          <Ionicons name="play-circle" size={40} color="rgba(255,255,255,0.9)" />
+        </View>
+      </View>
+      <Text style={[styles.gridTitle, { color: colors.text }]} numberOfLines={2}>
+        {item.channel_name}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const tabs = [
+    { key: 'live', label: 'TV', icon: 'tv' },
+    { key: 'movie', label: 'Filmer', icon: 'film' },
+    { key: 'series', label: 'Serier', icon: 'albums' },
+  ];
+
   if (isLoading) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
@@ -135,34 +180,89 @@ export default function FavoritesScreen() {
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Favoriter</Text>
         <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-          {favorites.length} kanal{favorites.length !== 1 ? 'er' : ''}
+          {filteredFavorites.length} {activeTab === 'live' ? 'kanaler' : activeTab === 'movie' ? 'filmer' : 'serier'}
         </Text>
       </View>
 
-      <FlatList
-        data={favorites}
-        keyExtractor={(item) => item.id}
-        renderItem={renderFavorite}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="heart-outline" size={64} color={colors.textMuted} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              Inga favoriter
+      <View style={[styles.tabContainer, { backgroundColor: colors.surface }]}>
+        {tabs.map(tab => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[
+              styles.tab,
+              activeTab === tab.key && { backgroundColor: colors.primary },
+            ]}
+            onPress={() => setActiveTab(tab.key as any)}
+          >
+            <Ionicons
+              name={tab.icon as any}
+              size={18}
+              color={activeTab === tab.key ? '#ffffff' : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === tab.key ? '#ffffff' : colors.textMuted },
+              ]}
+            >
+              {tab.label}
             </Text>
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              Tryck på hjärtat vid en kanal för att lägga till den här
-            </Text>
-          </View>
-        }
-      />
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {activeTab === 'live' ? (
+        <FlatList
+          data={filteredFavorites}
+          keyExtractor={(item) => item.id}
+          renderItem={renderChannelItem}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="heart-outline" size={64} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                Inga favoriter
+              </Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                Tryck på hjärtat vid en kanal för att lägga till den här
+              </Text>
+            </View>
+          }
+        />
+      ) : (
+        <FlatList
+          data={filteredFavorites}
+          keyExtractor={(item) => item.id}
+          renderItem={renderGridItem}
+          numColumns={3}
+          contentContainerStyle={styles.gridContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="heart-outline" size={64} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                Inga favoriter
+              </Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                Tryck på hjärtat vid en {activeTab === 'movie' ? 'film' : 'serie'} för att lägga till den här
+              </Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -187,6 +287,26 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     marginTop: 4,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   listContent: {
     padding: 16,
@@ -226,6 +346,58 @@ const styles = StyleSheet.create({
   },
   removeButton: {
     padding: 8,
+  },
+  gridContent: {
+    paddingHorizontal: 12,
+    flexGrow: 1,
+  },
+  gridItem: {
+    width: POSTER_WIDTH,
+    marginHorizontal: 4,
+    marginBottom: 16,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  posterContainer: {
+    width: '100%',
+    height: POSTER_HEIGHT,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  poster: {
+    width: '100%',
+    height: '100%',
+  },
+  posterPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  favoriteOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  gridTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 8,
+    paddingHorizontal: 4,
   },
   emptyContainer: {
     flex: 1,
