@@ -262,7 +262,7 @@ export default function PlayerScreen() {
   const handleError = (err: any) => {
     console.error('Video error:', err);
     const errorMessage = Platform.OS === 'web' 
-      ? 'Strömmen kan inte spelas i webbläsaren. Testa i Expo Go-appen!'
+      ? 'Kunde inte spela strömmen. Försöker via proxy...'
       : 'Kunde inte spela upp strömmen. Kontrollera din internetanslutning.';
     setError(errorMessage);
     setIsLoading(false);
