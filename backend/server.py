@@ -874,6 +874,120 @@ async def root():
 async def health_check():
     return {"status": "healthy"}
 
+# ==================== VIDEO PROXY ====================
+
+async def stream_video(url: str):
+    """Generator to stream video content"""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=None, connect=30)) as response:
+            async for chunk in response.content.iter_chunked(65536):  # 64KB chunks
+                yield chunk
+
+@api_router.get("/proxy/stream")
+async def proxy_stream(url: str = Query(..., description="Base64 encoded video URL")):
+    """Proxy video stream to bypass CORS"""
+    try:
+        # Decode the URL
+        decoded_url = base64.b64decode(url).decode('utf-8')
+        logger.info(f"Proxying stream: {decoded_url[:50]}...")
+        
+        # Determine content type based on URL
+        if '.m3u8' in decoded_url:
+            content_type = 'application/vnd.apple.mpegurl'
+        elif '.ts' in decoded_url:
+            content_type = 'video/mp2t'
+        elif '.mp4' in decoded_url:
+            content_type = 'video/mp4'
+        else:
+            content_type = 'video/mp2t'  # Default for IPTV streams
+        
+        return StreamingResponse(
+            stream_video(decoded_url),
+            media_type=content_type,
+            headers={
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                'Access-Control-Allow-Headers': '*',
+                'Cache-Control': 'no-cache',
+            }
+        )
+    except Exception as e:
+        logger.error(f"Proxy error: {e}")
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
+@api_router.get("/proxy/m3u8")
+async def proxy_m3u8(url: str = Query(..., description="Base64 encoded M3U8 URL")):
+    """Proxy and rewrite M3U8 playlist to use proxy for segments"""
+    try:
+        decoded_url = base64.b64decode(url).decode('utf-8')
+        logger.info(f"Proxying M3U8: {decoded_url[:50]}...")
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(decoded_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                if response.status != 200:
+                    raise HTTPException(status_code=response.status, detail="Failed to fetch playlist")
+                
+                content = await response.text()
+                
+                # Parse base URL for relative paths
+                parsed = urlparse(decoded_url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}{'/'.join(parsed.path.split('/')[:-1])}/"
+                
+                # Rewrite URLs in the playlist to use our proxy
+                lines = content.split('\n')
+                rewritten_lines = []
+                
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        rewritten_lines.append(line)
+                        continue
+                    
+                    if line.startswith('#'):
+                        # Handle URI in tags like #EXT-X-KEY
+                        if 'URI="' in line:
+                            import re
+                            def replace_uri(match):
+                                uri = match.group(1)
+                                if not uri.startswith('http'):
+                                    uri = urljoin(base_url, uri)
+                                encoded = base64.b64encode(uri.encode()).decode()
+                                return f'URI="/api/proxy/stream?url={encoded}"'
+                            line = re.sub(r'URI="([^"]+)"', replace_uri, line)
+                        rewritten_lines.append(line)
+                    else:
+                        # This is a URL line
+                        if line.startswith('http'):
+                            segment_url = line
+                        else:
+                            segment_url = urljoin(base_url, line)
+                        
+                        # Check if it's another m3u8 or a segment
+                        if '.m3u8' in line:
+                            encoded = base64.b64encode(segment_url.encode()).decode()
+                            rewritten_lines.append(f"/api/proxy/m3u8?url={encoded}")
+                        else:
+                            encoded = base64.b64encode(segment_url.encode()).decode()
+                            rewritten_lines.append(f"/api/proxy/stream?url={encoded}")
+                
+                rewritten_content = '\n'.join(rewritten_lines)
+                
+                return StreamingResponse(
+                    iter([rewritten_content.encode()]),
+                    media_type='application/vnd.apple.mpegurl',
+                    headers={
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                        'Access-Control-Allow-Headers': '*',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    }
+                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"M3U8 proxy error: {e}")
+        raise HTTPException(status_code=500, detail=f"M3U8 proxy error: {str(e)}")
+
 # Include router
 app.include_router(api_router)
 
