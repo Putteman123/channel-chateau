@@ -38,6 +38,7 @@ function WebVideoPlayer({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -45,6 +46,7 @@ function WebVideoPlayer({
 
     const handlePlay = () => {
       setIsPlaying(true);
+      setHasError(false);
       onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
     };
     
@@ -58,23 +60,33 @@ function WebVideoPlayer({
     };
     
     const handleCanPlay = () => {
+      setHasError(false);
       onLoad();
       onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: false });
     };
     
-    const handleError = () => {
-      onError('Kunde inte spela upp strömmen');
+    const handlePlaying = () => {
+      setHasError(false);
+      onLoad();
+    };
+    
+    const handleError = (e: Event) => {
+      console.error('Video error event:', e);
+      setHasError(true);
+      onError('Kunde inte spela upp strömmen. CORS-begränsningar kan förhindra uppspelning i webbläsaren.');
     };
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('playing', handlePlaying);
     video.addEventListener('error', handleError);
 
     // Try to auto-play
-    video.play().catch(() => {
-      // Auto-play blocked, user needs to interact
+    video.play().catch((err) => {
+      console.log('Auto-play prevented:', err);
+      // Auto-play blocked is not an error, user can click to play
     });
 
     return () => {
@@ -82,6 +94,7 @@ function WebVideoPlayer({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('error', handleError);
     };
   }, [url]);
@@ -109,21 +122,24 @@ function WebVideoPlayer({
           objectFit: 'contain',
         }}
         playsInline
-        controls={false}
+        controls={true}
+        crossOrigin="anonymous"
       />
-      <TouchableOpacity 
-        style={styles.webPlayOverlay}
-        onPress={togglePlay}
-        activeOpacity={0.8}
-      >
-        <View style={styles.webPlayButton}>
-          <Ionicons
-            name={isPlaying ? 'pause' : 'play'}
-            size={48}
-            color="#ffffff"
-          />
-        </View>
-      </TouchableOpacity>
+      {!hasError && (
+        <TouchableOpacity 
+          style={styles.webPlayOverlay}
+          onPress={togglePlay}
+          activeOpacity={0.8}
+        >
+          <View style={styles.webPlayButton}>
+            <Ionicons
+              name={isPlaying ? 'pause' : 'play'}
+              size={48}
+              color="#ffffff"
+            />
+          </View>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
