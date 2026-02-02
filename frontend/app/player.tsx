@@ -203,6 +203,9 @@ export default function PlayerScreen() {
   const { url, name, logo } = useLocalSearchParams<{ url: string; name: string; logo?: string }>();
   const { colors } = useTheme();
   
+  // Get the proxied URL for web platform
+  const streamUrl = url ? getProxyUrl(url) : '';
+  
   const videoRef = useRef<any>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isBuffering, setIsBuffering] = useState(false);
