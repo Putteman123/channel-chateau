@@ -264,7 +264,6 @@ frontend:
       - working: "NA"
         agent: "main"
         comment: "Integrated video proxy on web platform. Player now uses getProxyUrl() function that automatically routes web video requests through /api/proxy/stream or /api/proxy/m3u8. Native platforms bypass proxy and use direct URLs. Needs frontend testing on web."
-        comment: "Full screen player with controls, live indicator"
 
 metadata:
   created_by: "main_agent"
