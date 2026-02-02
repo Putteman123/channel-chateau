@@ -252,14 +252,18 @@ frontend:
 
   - task: "Video player"
     implemented: true
-    working: true
+    working: "NA"
     file: "app/player.tsx"
-    stuck_count: 0
+    stuck_count: 3
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
-      - working: true
+      - working: false
+        agent: "user"
+        comment: "Video streams fail in web browser due to CORS errors. Native apps work fine."
+      - working: "NA"
         agent: "main"
+        comment: "Integrated video proxy on web platform. Player now uses getProxyUrl() function that automatically routes web video requests through /api/proxy/stream or /api/proxy/m3u8. Native platforms bypass proxy and use direct URLs. Needs frontend testing on web."
         comment: "Full screen player with controls, live indicator"
 
 metadata:
