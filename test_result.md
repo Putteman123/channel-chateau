@@ -165,6 +165,18 @@ backend:
         agent: "main"
         comment: "Skip/limit pagination for channels, movies, series"
 
+  - task: "Video proxy for CORS bypass"
+    implemented: true
+    working: "NA"
+    file: "server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Implemented /api/proxy/stream and /api/proxy/m3u8 endpoints to proxy video streams and playlists. Uses aiohttp to fetch content server-side and stream back to client. Supports HLS (.m3u8) and direct streams (.ts, .mp4). Needs backend testing."
+
 frontend:
   - task: "Authentication screens (login/register)"
     implemented: true
