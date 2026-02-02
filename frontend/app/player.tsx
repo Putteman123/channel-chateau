@@ -15,16 +15,39 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTheme } from '../src/hooks/useTheme';
 
+// Helper to encode URL for proxy
+const encodeUrlForProxy = (url: string): string => {
+  if (typeof btoa !== 'undefined') {
+    return btoa(url);
+  }
+  // Node.js fallback
+  return Buffer.from(url).toString('base64');
+};
+
+// Get proxy URL for video streams
+const getProxyUrl = (originalUrl: string): string => {
+  if (Platform.OS !== 'web') {
+    // Native apps don't need proxy
+    return originalUrl;
+  }
+  
+  const encodedUrl = encodeUrlForProxy(originalUrl);
+  
+  // Use m3u8 proxy for HLS streams, otherwise use stream proxy
+  if (originalUrl.includes('.m3u8')) {
+    return `/api/proxy/m3u8?url=${encodedUrl}`;
+  }
+  return `/api/proxy/stream?url=${encodedUrl}`;
+};
+
 // Import video components based on platform
 let Video: any = null;
 let VideoNative: any = null;
 
 if (Platform.OS !== 'web') {
   try {
-    // Try react-native-video first (better for streaming)
     VideoNative = require('react-native-video').default;
   } catch (e) {
-    // Fallback to expo-av
     const AV = require('expo-av');
     Video = AV.Video;
   }
