@@ -96,7 +96,7 @@ function WebVideoPlayer({
     };
     
     const handleError = () => {
-      onError('Strömmen kan inte spelas i webbläsaren pga CORS-begränsningar. Testa i Expo Go-appen på mobilen!');
+      onError('Kunde inte spela strömmen. Kontrollera din internetanslutning.');
     };
 
     video.addEventListener('play', handlePlay);
