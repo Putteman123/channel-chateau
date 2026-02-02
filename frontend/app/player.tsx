@@ -11,18 +11,131 @@ import {
   Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTheme } from '../src/hooks/useTheme';
+
+// Conditionally import Video for native platforms
+let Video: any = null;
+let ResizeMode: any = null;
+if (Platform.OS !== 'web') {
+  const AV = require('expo-av');
+  Video = AV.Video;
+  ResizeMode = AV.ResizeMode;
+}
+
+// Web video player component
+function WebVideoPlayer({ 
+  url, 
+  onError, 
+  onLoad, 
+  onPlaybackStatusUpdate 
+}: { 
+  url: string; 
+  onError: (error: string) => void;
+  onLoad: () => void;
+  onPlaybackStatusUpdate: (status: { isPlaying: boolean; isBuffering: boolean }) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handlePlay = () => {
+      setIsPlaying(true);
+      onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
+    };
+    
+    const handlePause = () => {
+      setIsPlaying(false);
+      onPlaybackStatusUpdate({ isPlaying: false, isBuffering: false });
+    };
+    
+    const handleWaiting = () => {
+      onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: true });
+    };
+    
+    const handleCanPlay = () => {
+      onLoad();
+      onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: false });
+    };
+    
+    const handleError = () => {
+      onError('Kunde inte spela upp strömmen');
+    };
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('waiting', handleWaiting);
+    video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('error', handleError);
+
+    // Try to auto-play
+    video.play().catch(() => {
+      // Auto-play blocked, user needs to interact
+    });
+
+    return () => {
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('waiting', handleWaiting);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('error', handleError);
+    };
+  }, [url]);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      video.play().catch(console.error);
+    } else {
+      video.pause();
+    }
+  };
+
+  return (
+    <View style={styles.webVideoContainer}>
+      <video
+        ref={videoRef}
+        src={url}
+        style={{
+          width: '100%',
+          height: '100%',
+          backgroundColor: '#000',
+          objectFit: 'contain',
+        }}
+        playsInline
+        controls={false}
+      />
+      <TouchableOpacity 
+        style={styles.webPlayOverlay}
+        onPress={togglePlay}
+        activeOpacity={0.8}
+      >
+        <View style={styles.webPlayButton}>
+          <Ionicons
+            name={isPlaying ? 'pause' : 'play'}
+            size={48}
+            color="#ffffff"
+          />
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function PlayerScreen() {
   const router = useRouter();
   const { url, name, logo } = useLocalSearchParams<{ url: string; name: string; logo?: string }>();
   const { colors } = useTheme();
   
-  const videoRef = useRef<Video>(null);
-  const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
+  const videoRef = useRef<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
@@ -52,14 +165,14 @@ export default function PlayerScreen() {
         clearTimeout(controlsTimeout.current);
       }
     };
-  }, [showControls]);
+  }, [showControls, isPlaying]);
 
   const resetControlsTimeout = () => {
     if (controlsTimeout.current) {
       clearTimeout(controlsTimeout.current);
     }
     controlsTimeout.current = setTimeout(() => {
-      if (status && (status as any).isPlaying) {
+      if (isPlaying) {
         setShowControls(false);
       }
     }, 4000);
@@ -69,11 +182,17 @@ export default function PlayerScreen() {
     setShowControls(prev => !prev);
   };
 
-  const handlePlaybackStatusUpdate = (newStatus: AVPlaybackStatus) => {
-    setStatus(newStatus);
+  const handlePlaybackStatusUpdate = (status: { isPlaying: boolean; isBuffering: boolean }) => {
+    setIsPlaying(status.isPlaying);
+    setIsBuffering(status.isBuffering);
+  };
+
+  const handleNativePlaybackStatusUpdate = (newStatus: any) => {
     if (newStatus.isLoaded) {
       setIsLoading(false);
       setError(null);
+      setIsPlaying(newStatus.isPlaying || false);
+      setIsBuffering(newStatus.isBuffering || false);
     }
   };
 
@@ -81,6 +200,11 @@ export default function PlayerScreen() {
     console.error('Video error:', errorMessage);
     setError('Kunde inte spela upp strömmen. Kontrollera att URL:en är korrekt.');
     setIsLoading(false);
+  };
+
+  const handleLoad = () => {
+    setIsLoading(false);
+    setError(null);
   };
 
   const toggleFullscreen = async () => {
@@ -91,14 +215,79 @@ export default function PlayerScreen() {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       }
       setIsFullscreen(!isFullscreen);
+    } else {
+      // Web fullscreen
+      const container = document.querySelector('.player-container');
+      if (container) {
+        if (!document.fullscreenElement) {
+          container.requestFullscreen?.();
+          setIsFullscreen(true);
+        } else {
+          document.exitFullscreen?.();
+          setIsFullscreen(false);
+        }
+      }
     }
   };
 
-  const isPlaying = status && (status as any).isLoaded && (status as any).isPlaying;
-  const isBuffering = status && (status as any).isLoaded && (status as any).isBuffering;
+  const togglePlayPause = async () => {
+    if (Platform.OS === 'web') {
+      // Handled by WebVideoPlayer
+      return;
+    }
+    
+    try {
+      if (videoRef.current) {
+        if (isPlaying) {
+          await videoRef.current.pauseAsync();
+        } else {
+          await videoRef.current.playAsync();
+        }
+      }
+    } catch (err) {
+      console.error('Play/pause error:', err);
+    }
+  };
+
+  const renderVideoPlayer = () => {
+    if (!url) {
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color="#ff6b6b" />
+          <Text style={styles.errorText}>Ingen URL angiven</Text>
+        </View>
+      );
+    }
+
+    if (Platform.OS === 'web') {
+      return (
+        <WebVideoPlayer
+          url={url}
+          onError={handleError}
+          onLoad={handleLoad}
+          onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+        />
+      );
+    }
+
+    // Native video player
+    return Video ? (
+      <Video
+        ref={videoRef}
+        source={{ uri: url }}
+        style={styles.video}
+        resizeMode={ResizeMode?.CONTAIN || 'contain'}
+        shouldPlay={true}
+        isLooping={false}
+        onPlaybackStatusUpdate={handleNativePlaybackStatusUpdate}
+        onError={(e: any) => handleError(e)}
+        useNativeControls={false}
+      />
+    ) : null;
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor: '#000000' }]}>
+    <View style={[styles.container, { backgroundColor: '#000000' }]} className="player-container">
       <StatusBar hidden={!showControls} />
       
       <TouchableOpacity
@@ -106,26 +295,9 @@ export default function PlayerScreen() {
         activeOpacity={1}
         onPress={toggleControls}
       >
-        {url ? (
-          <Video
-            ref={videoRef}
-            source={{ uri: url }}
-            style={styles.video}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={true}
-            isLooping={false}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-            onError={(e) => handleError(e)}
-            useNativeControls={false}
-          />
-        ) : (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle" size={48} color="#ff6b6b" />
-            <Text style={styles.errorText}>Ingen URL angiven</Text>
-          </View>
-        )}
+        {renderVideoPlayer()}
 
-        {(isLoading || isBuffering) && (
+        {(isLoading || isBuffering) && !error && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#ffffff" />
             <Text style={styles.loadingText}>
@@ -143,7 +315,6 @@ export default function PlayerScreen() {
               onPress={() => {
                 setError(null);
                 setIsLoading(true);
-                videoRef.current?.playAsync();
               }}
             >
               <Text style={styles.retryText}>Försök igen</Text>
@@ -183,24 +354,20 @@ export default function PlayerScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.centerControls}>
-            <TouchableOpacity
-              style={styles.playButton}
-              onPress={() => {
-                if (isPlaying) {
-                  videoRef.current?.pauseAsync();
-                } else {
-                  videoRef.current?.playAsync();
-                }
-              }}
-            >
-              <Ionicons
-                name={isPlaying ? 'pause' : 'play'}
-                size={48}
-                color="#ffffff"
-              />
-            </TouchableOpacity>
-          </View>
+          {Platform.OS !== 'web' && (
+            <View style={styles.centerControls}>
+              <TouchableOpacity
+                style={styles.playButton}
+                onPress={togglePlayPause}
+              >
+                <Ionicons
+                  name={isPlaying ? 'pause' : 'play'}
+                  size={48}
+                  color="#ffffff"
+                />
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.bottomControls}>
             <View style={[styles.liveIndicator, { backgroundColor: '#ff0000' }]}>
@@ -228,6 +395,28 @@ const styles = StyleSheet.create({
   video: {
     width: '100%',
     height: '100%',
+  },
+  webVideoContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  webPlayOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  webPlayButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
