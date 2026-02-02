@@ -326,7 +326,7 @@ export default function PlayerScreen() {
     if (Platform.OS === 'web') {
       return (
         <WebVideoPlayer
-          url={url}
+          url={streamUrl}
           onError={handleError}
           onLoad={handleLoad}
           onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
