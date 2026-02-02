@@ -273,7 +273,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Verify Xtream Codes integration with real server"
+    - "Video proxy for CORS bypass"
+    - "Video player"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -281,3 +282,5 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "Initial implementation complete with all core features"
+  - agent: "main"
+    message: "Implemented video proxy solution. Backend has /api/proxy/stream and /api/proxy/m3u8 endpoints. Frontend player.tsx updated to use getProxyUrl() on web platform. Ready for backend testing with a sample stream URL."
