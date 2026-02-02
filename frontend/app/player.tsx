@@ -15,16 +15,22 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTheme } from '../src/hooks/useTheme';
 
-// Conditionally import Video for native platforms
+// Import video components based on platform
 let Video: any = null;
-let ResizeMode: any = null;
+let VideoNative: any = null;
+
 if (Platform.OS !== 'web') {
-  const AV = require('expo-av');
-  Video = AV.Video;
-  ResizeMode = AV.ResizeMode;
+  try {
+    // Try react-native-video first (better for streaming)
+    VideoNative = require('react-native-video').default;
+  } catch (e) {
+    // Fallback to expo-av
+    const AV = require('expo-av');
+    Video = AV.Video;
+  }
 }
 
-// Web video player component
+// Web video player using HTML5 video
 function WebVideoPlayer({ 
   url, 
   onError, 
@@ -38,7 +44,6 @@ function WebVideoPlayer({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -46,7 +51,6 @@ function WebVideoPlayer({
 
     const handlePlay = () => {
       setIsPlaying(true);
-      setHasError(false);
       onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
     };
     
@@ -60,20 +64,16 @@ function WebVideoPlayer({
     };
     
     const handleCanPlay = () => {
-      setHasError(false);
       onLoad();
       onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: false });
     };
     
     const handlePlaying = () => {
-      setHasError(false);
       onLoad();
     };
     
-    const handleError = (e: Event) => {
-      console.error('Video error event:', e);
-      setHasError(true);
-      onError('Kunde inte spela upp strömmen. CORS-begränsningar kan förhindra uppspelning i webbläsaren.');
+    const handleError = () => {
+      onError('Strömmen kan inte spelas i webbläsaren pga CORS-begränsningar. Testa i Expo Go-appen på mobilen!');
     };
 
     video.addEventListener('play', handlePlay);
@@ -84,10 +84,7 @@ function WebVideoPlayer({
     video.addEventListener('error', handleError);
 
     // Try to auto-play
-    video.play().catch((err) => {
-      console.log('Auto-play prevented:', err);
-      // Auto-play blocked is not an error, user can click to play
-    });
+    video.play().catch(() => {});
 
     return () => {
       video.removeEventListener('play', handlePlay);
@@ -98,17 +95,6 @@ function WebVideoPlayer({
       video.removeEventListener('error', handleError);
     };
   }, [url]);
-
-  const togglePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (video.paused) {
-      video.play().catch(console.error);
-    } else {
-      video.pause();
-    }
-  };
 
   return (
     <View style={styles.webVideoContainer}>
@@ -123,25 +109,70 @@ function WebVideoPlayer({
         }}
         playsInline
         controls={true}
-        crossOrigin="anonymous"
+        autoPlay
       />
-      {!hasError && (
-        <TouchableOpacity 
-          style={styles.webPlayOverlay}
-          onPress={togglePlay}
-          activeOpacity={0.8}
-        >
-          <View style={styles.webPlayButton}>
-            <Ionicons
-              name={isPlaying ? 'pause' : 'play'}
-              size={48}
-              color="#ffffff"
-            />
-          </View>
-        </TouchableOpacity>
-      )}
     </View>
   );
+}
+
+// Native video player using react-native-video
+function NativeVideoPlayer({
+  url,
+  onError,
+  onLoad,
+  onBuffer,
+  onProgress,
+  videoRef,
+}: {
+  url: string;
+  onError: (error: any) => void;
+  onLoad: () => void;
+  onBuffer: (data: { isBuffering: boolean }) => void;
+  onProgress: (data: any) => void;
+  videoRef: React.RefObject<any>;
+}) {
+  if (VideoNative) {
+    return (
+      <VideoNative
+        ref={videoRef}
+        source={{ uri: url }}
+        style={styles.video}
+        resizeMode="contain"
+        onLoad={onLoad}
+        onError={onError}
+        onBuffer={onBuffer}
+        onProgress={onProgress}
+        repeat={false}
+        controls={false}
+        paused={false}
+        bufferConfig={{
+          minBufferMs: 15000,
+          maxBufferMs: 50000,
+          bufferForPlaybackMs: 2500,
+          bufferForPlaybackAfterRebufferMs: 5000,
+        }}
+      />
+    );
+  }
+  
+  // Fallback to expo-av
+  if (Video) {
+    return (
+      <Video
+        ref={videoRef}
+        source={{ uri: url }}
+        style={styles.video}
+        resizeMode="contain"
+        shouldPlay={true}
+        isLooping={false}
+        onLoad={onLoad}
+        onError={onError}
+        useNativeControls={false}
+      />
+    );
+  }
+  
+  return null;
 }
 
 export default function PlayerScreen() {
@@ -150,22 +181,21 @@ export default function PlayerScreen() {
   const { colors } = useTheme();
   
   const videoRef = useRef<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Lock to landscape when entering player on mobile
     if (Platform.OS !== 'web') {
       ScreenOrientation.unlockAsync();
     }
-
     return () => {
-      // Reset orientation when leaving
       if (Platform.OS !== 'web') {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       }
@@ -173,7 +203,7 @@ export default function PlayerScreen() {
   }, []);
 
   useEffect(() => {
-    if (showControls) {
+    if (showControls && isPlaying) {
       resetControlsTimeout();
     }
     return () => {
@@ -198,29 +228,36 @@ export default function PlayerScreen() {
     setShowControls(prev => !prev);
   };
 
-  const handlePlaybackStatusUpdate = (status: { isPlaying: boolean; isBuffering: boolean }) => {
-    setIsPlaying(status.isPlaying);
-    setIsBuffering(status.isBuffering);
-  };
-
-  const handleNativePlaybackStatusUpdate = (newStatus: any) => {
-    if (newStatus.isLoaded) {
-      setIsLoading(false);
-      setError(null);
-      setIsPlaying(newStatus.isPlaying || false);
-      setIsBuffering(newStatus.isBuffering || false);
-    }
-  };
-
-  const handleError = (errorMessage: string) => {
-    console.error('Video error:', errorMessage);
-    setError('Kunde inte spela upp strömmen. Kontrollera att URL:en är korrekt.');
-    setIsLoading(false);
-  };
-
   const handleLoad = () => {
     setIsLoading(false);
     setError(null);
+  };
+
+  const handleError = (err: any) => {
+    console.error('Video error:', err);
+    const errorMessage = Platform.OS === 'web' 
+      ? 'Strömmen kan inte spelas i webbläsaren. Testa i Expo Go-appen!'
+      : 'Kunde inte spela upp strömmen. Kontrollera din internetanslutning.';
+    setError(errorMessage);
+    setIsLoading(false);
+  };
+
+  const handleBuffer = ({ isBuffering: buffering }: { isBuffering: boolean }) => {
+    setIsBuffering(buffering);
+  };
+
+  const handleProgress = (data: any) => {
+    if (data.currentTime) {
+      setCurrentTime(data.currentTime);
+    }
+    if (data.playableDuration) {
+      setDuration(data.playableDuration);
+    }
+  };
+
+  const handlePlaybackStatusUpdate = (status: { isPlaying: boolean; isBuffering: boolean }) => {
+    setIsPlaying(status.isPlaying);
+    setIsBuffering(status.isBuffering);
   };
 
   const toggleFullscreen = async () => {
@@ -231,37 +268,22 @@ export default function PlayerScreen() {
         await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       }
       setIsFullscreen(!isFullscreen);
-    } else {
-      // Web fullscreen
-      const container = document.querySelector('.player-container');
-      if (container) {
-        if (!document.fullscreenElement) {
-          container.requestFullscreen?.();
-          setIsFullscreen(true);
-        } else {
-          document.exitFullscreen?.();
-          setIsFullscreen(false);
-        }
-      }
     }
   };
 
-  const togglePlayPause = async () => {
-    if (Platform.OS === 'web') {
-      // Handled by WebVideoPlayer
-      return;
-    }
+  const togglePlayPause = () => {
+    if (Platform.OS === 'web') return;
     
-    try {
-      if (videoRef.current) {
-        if (isPlaying) {
-          await videoRef.current.pauseAsync();
-        } else {
-          await videoRef.current.playAsync();
-        }
+    if (VideoNative && videoRef.current) {
+      setIsPlaying(!isPlaying);
+      // react-native-video uses paused prop, we toggle it via state
+    } else if (Video && videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pauseAsync?.();
+      } else {
+        videoRef.current.playAsync?.();
       }
-    } catch (err) {
-      console.error('Play/pause error:', err);
+      setIsPlaying(!isPlaying);
     }
   };
 
@@ -286,24 +308,64 @@ export default function PlayerScreen() {
       );
     }
 
-    // Native video player
-    return Video ? (
-      <Video
-        ref={videoRef}
-        source={{ uri: url }}
-        style={styles.video}
-        resizeMode={ResizeMode?.CONTAIN || 'contain'}
-        shouldPlay={true}
-        isLooping={false}
-        onPlaybackStatusUpdate={handleNativePlaybackStatusUpdate}
-        onError={(e: any) => handleError(e)}
-        useNativeControls={false}
-      />
-    ) : null;
+    // Native player
+    if (VideoNative) {
+      return (
+        <VideoNative
+          ref={videoRef}
+          source={{ uri: url }}
+          style={styles.video}
+          resizeMode="contain"
+          onLoad={handleLoad}
+          onError={handleError}
+          onBuffer={handleBuffer}
+          onProgress={handleProgress}
+          repeat={false}
+          controls={false}
+          paused={!isPlaying}
+          bufferConfig={{
+            minBufferMs: 15000,
+            maxBufferMs: 50000,
+            bufferForPlaybackMs: 2500,
+            bufferForPlaybackAfterRebufferMs: 5000,
+          }}
+        />
+      );
+    }
+    
+    // Fallback to expo-av
+    if (Video) {
+      return (
+        <Video
+          ref={videoRef}
+          source={{ uri: url }}
+          style={styles.video}
+          resizeMode="contain"
+          shouldPlay={isPlaying}
+          isLooping={false}
+          onPlaybackStatusUpdate={(status: any) => {
+            if (status.isLoaded) {
+              setIsLoading(false);
+              setIsPlaying(status.isPlaying);
+              setIsBuffering(status.isBuffering);
+            }
+          }}
+          onError={handleError}
+          useNativeControls={false}
+        />
+      );
+    }
+
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="videocam-off" size={48} color="#ff6b6b" />
+        <Text style={styles.errorText}>Videospelare inte tillgänglig</Text>
+      </View>
+    );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: '#000000' }]} className="player-container">
+    <View style={styles.container}>
       <StatusBar hidden={!showControls} />
       
       <TouchableOpacity
@@ -331,6 +393,7 @@ export default function PlayerScreen() {
               onPress={() => {
                 setError(null);
                 setIsLoading(true);
+                setIsPlaying(true);
               }}
             >
               <Text style={styles.retryText}>Försök igen</Text>
@@ -340,7 +403,7 @@ export default function PlayerScreen() {
       </TouchableOpacity>
 
       {showControls && (
-        <View style={styles.controlsOverlay}>
+        <View style={styles.controlsOverlay} pointerEvents="box-none">
           <View style={styles.topControls}>
             <TouchableOpacity
               style={styles.backButton}
@@ -397,16 +460,16 @@ export default function PlayerScreen() {
   );
 }
 
-const { width, height } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000000',
   },
   videoContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#000000',
   },
   video: {
     width: '100%',
@@ -415,24 +478,7 @@ const styles = StyleSheet.create({
   webVideoContainer: {
     width: '100%',
     height: '100%',
-    position: 'relative',
-  },
-  webPlayOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  webPlayButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#000000',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -449,7 +495,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     padding: 32,
   },
   errorContainer: {
@@ -463,6 +509,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
     lineHeight: 24,
+    paddingHorizontal: 20,
   },
   retryButton: {
     marginTop: 24,
@@ -479,6 +526,7 @@ const styles = StyleSheet.create({
   controlsOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'space-between',
   },
   topControls: {
     flexDirection: 'row',
