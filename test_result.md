@@ -167,15 +167,18 @@ backend:
 
   - task: "Video proxy for CORS bypass"
     implemented: true
-    working: "NA"
+    working: true
     file: "server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Implemented /api/proxy/stream and /api/proxy/m3u8 endpoints to proxy video streams and playlists. Uses aiohttp to fetch content server-side and stream back to client. Supports HLS (.m3u8) and direct streams (.ts, .mp4). Needs backend testing."
+      - working: true
+        agent: "testing"
+        comment: "✅ BACKEND TESTING COMPLETE - Both proxy endpoints working correctly. /api/proxy/stream successfully proxies video streams with proper CORS headers. /api/proxy/m3u8 correctly rewrites M3U8 playlists to route all URLs through proxy. Tested with real HLS streams and MP4 files. Error handling works for invalid URLs and malformed base64. Ready for frontend integration testing."
 
 frontend:
   - task: "Authentication screens (login/register)"
