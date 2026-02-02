@@ -4,9 +4,15 @@ import Constants from 'expo-constants';
 
 // Get backend URL from environment with proper fallback
 const getBackendUrl = (): string => {
-  // For web platform, use relative URL (empty string) to use same origin
-  // This works with the proxy setup where /api/* routes to backend
+  // For web platform in development, the /api/* routes are proxied
+  // by the Kubernetes ingress controller when accessed via the preview URL.
+  // For local development on localhost:3000, we need to use port 8001 directly.
   if (Platform.OS === 'web') {
+    // Check if we're on localhost (development)
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return 'http://localhost:8001';
+    }
+    // On preview URL, use relative path (proxy handles it)
     return '';
   }
   
