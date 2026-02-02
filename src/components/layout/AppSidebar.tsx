@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { useAdminCheck } from '@/hooks/useAdminCheck';
 import { useStream } from '@/contexts/StreamContext';
-import { StreamifyLogo } from '@/components/brand/StreamifyLogo';
+import { StreamifyFullLogo } from '@/components/brand/StreamifyMIcon';
 import {
   Sidebar,
   SidebarContent,
@@ -55,7 +55,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">
       <SidebarHeader className="p-4">
-        <StreamifyLogo 
+        <StreamifyFullLogo 
           collapsed={collapsed} 
           size={collapsed ? 'sm' : 'md'} 
         />

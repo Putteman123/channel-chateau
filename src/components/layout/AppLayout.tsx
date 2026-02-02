@@ -6,6 +6,9 @@ import { StreamProvider, useStream } from '@/contexts/StreamContext';
 import { SpatialNavigationProvider, useSpatialNavigation } from '@/contexts/SpatialNavigationContext';
 import { ExpiryWarningBanner } from '@/components/subscription/ExpiryWarningBanner';
 import { AnnouncementBanner } from '@/components/announcements/AnnouncementBanner';
+import { SyncOverlay } from '@/components/sync/SyncOverlay';
+import { SyncStatusBadge } from '@/components/sync/SyncStatusBadge';
+import { useSyncEngine } from '@/hooks/useSyncEngine';
 import { Tv } from 'lucide-react';
 
 function TvModeIndicator() {
@@ -24,7 +27,17 @@ function TvModeIndicator() {
 function AppLayoutInner() {
   const navigate = useNavigate();
   const { isTvMode } = useSpatialNavigation();
-  const { sources } = useStream();
+  const { sources, activeSource } = useStream();
+  
+  // Sync engine for IPTVX-like performance
+  const { 
+    syncProgress, 
+    isSyncing, 
+    needsInitialSync, 
+    startFullSync, 
+    startDeltaSync,
+    cacheStats 
+  } = useSyncEngine();
 
   // Handle back navigation in TV mode
   useEffect(() => {
@@ -35,6 +48,30 @@ function AppLayoutInner() {
     window.addEventListener('spatial-back', handleBack);
     return () => window.removeEventListener('spatial-back', handleBack);
   }, [navigate]);
+  
+  // Trigger initial sync if needed
+  useEffect(() => {
+    if (needsInitialSync && activeSource && !isSyncing) {
+      startFullSync();
+    }
+  }, [needsInitialSync, activeSource, isSyncing, startFullSync]);
+  
+  // Background delta sync on app focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!needsInitialSync && activeSource && !isSyncing) {
+        startDeltaSync();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [needsInitialSync, activeSource, isSyncing, startDeltaSync]);
+
+  // Show sync overlay during initial sync
+  if (syncProgress.stage !== 'idle' && syncProgress.isInitialSync) {
+    return <SyncOverlay syncProgress={syncProgress} onRetry={startFullSync} />;
+  }
 
   return (
     <SidebarProvider>
@@ -48,6 +85,16 @@ function AppLayoutInner() {
                 Använd piltangenter för att navigera
               </span>
             )}
+            <div className="ml-auto">
+              <SyncStatusBadge
+                channelCount={cacheStats.channelCount}
+                vodCount={cacheStats.vodCount}
+                seriesCount={cacheStats.seriesCount}
+                lastSync={cacheStats.lastSync}
+                onRefresh={startDeltaSync}
+                isRefreshing={isSyncing}
+              />
+            </div>
           </header>
           <div className="p-6">
             <AnnouncementBanner />
