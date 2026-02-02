@@ -339,7 +339,7 @@ export default function PlayerScreen() {
       return (
         <VideoNative
           ref={videoRef}
-          source={{ uri: url }}
+          source={{ uri: streamUrl }}
           style={styles.video}
           resizeMode="contain"
           onLoad={handleLoad}
@@ -364,7 +364,7 @@ export default function PlayerScreen() {
       return (
         <Video
           ref={videoRef}
-          source={{ uri: url }}
+          source={{ uri: streamUrl }}
           style={styles.video}
           resizeMode="contain"
           shouldPlay={isPlaying}
