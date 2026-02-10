@@ -50,7 +50,7 @@ export interface ShakaPlayerProps {
 }
 
 interface PlayerError {
-  type: 'mixed-content' | 'cors' | 'network' | 'decode' | 'ts-format' | 'unknown';
+  type: 'mixed-content' | 'cors' | 'network' | 'decode' | 'audio' | 'ts-format' | 'unknown';
   message: string;
   details?: string;
   code?: number;
@@ -165,8 +165,17 @@ function diagnoseError(
     };
   }
 
-  // Category 3: Media errors
+  // Category 3: Media errors (including audio)
   if (errorCategory === 3) {
+    // Check for audio-specific decode issues
+    if (errorMessage?.includes('audio') || errorCode === 3015 || errorCode === 3014) {
+      return {
+        type: 'audio',
+        message: 'Ljudfel: Kunde inte avkoda ljudspåret',
+        details: 'Ljudformatet stöds inte av webbläsaren. Prova byta ljudspår (om tillgängligt) eller öppna i VLC.',
+        code: errorCode,
+      };
+    }
     return {
       type: 'decode',
       message: 'Kunde inte avkoda strömmen',
@@ -219,6 +228,30 @@ function shouldUseNativePlayer(url: string): boolean {
   }
 }
 
+// Volume persistence helpers
+const VOLUME_KEY = 'streamify-player-volume';
+const MUTED_KEY = 'streamify-player-muted';
+
+function getSavedVolume(): number {
+  try {
+    const v = localStorage.getItem(VOLUME_KEY);
+    return v !== null ? parseFloat(v) : 1;
+  } catch { return 1; }
+}
+
+function getSavedMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY) === 'true';
+  } catch { return false; }
+}
+
+function saveVolumeState(volume: number, muted: boolean) {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(volume));
+    localStorage.setItem(MUTED_KEY, String(muted));
+  } catch { /* ignore */ }
+}
+
 export function ShakaPlayer({
   src,
   poster,
@@ -246,6 +279,7 @@ export function ShakaPlayer({
   const [diagnostics, setDiagnostics] = useState<DiagnosticsInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showDirectPlayback, setShowDirectPlayback] = useState(false);
+  const [audioInfo, setAudioInfo] = useState<string | null>(null);
   const isMountedRef = useRef(true);
 
   const { isTvMode } = useSpatialNavigation();
@@ -582,6 +616,31 @@ export function ShakaPlayer({
       await player.load(effectiveSrc);
       console.log('[ShakaPlayer] Stream loaded successfully');
 
+      // Restore saved volume state
+      if (videoRef.current) {
+        videoRef.current.volume = getSavedVolume();
+        videoRef.current.muted = getSavedMuted();
+        
+        // Track volume changes for persistence
+        videoRef.current.addEventListener('volumechange', () => {
+          if (videoRef.current) {
+            saveVolumeState(videoRef.current.volume, videoRef.current.muted);
+          }
+        });
+      }
+
+      // Log audio tracks info
+      const audioTracks = player.getAudioLanguagesAndRoles();
+      if (audioTracks.length > 0) {
+        const trackInfo = audioTracks.map(t => `${t.language || 'unknown'}`).join(', ');
+        console.log(`[ShakaPlayer] 🔊 Audio tracks: ${trackInfo}`);
+        if (isMountedRef.current) {
+          setAudioInfo(`${audioTracks.length} ljudspår: ${trackInfo}`);
+        }
+      } else {
+        console.log('[ShakaPlayer] 🔊 No separate audio tracks detected');
+      }
+
       // Set start position
       if (startPosition > 0 && videoRef.current) {
         videoRef.current.currentTime = startPosition;
@@ -593,6 +652,20 @@ export function ShakaPlayer({
           await videoRef.current.play();
         } catch (playError) {
           console.warn('[ShakaPlayer] Autoplay blocked:', playError);
+          // If autoplay was blocked due to muted policy, try muted autoplay
+          if (videoRef.current && !videoRef.current.muted) {
+            console.log('[ShakaPlayer] Retrying autoplay with muted audio...');
+            videoRef.current.muted = true;
+            try {
+              await videoRef.current.play();
+              // Show hint to user
+              if (isMountedRef.current) {
+                setAudioInfo('⚠️ Autoplay kräver att ljud är av – klicka på volymknappen för att slå på ljud');
+              }
+            } catch {
+              console.warn('[ShakaPlayer] Muted autoplay also blocked');
+            }
+          }
         }
       }
 
@@ -741,11 +814,21 @@ export function ShakaPlayer({
     } : null);
   };
 
-  // Handle native video loaded - set start position
+  // Handle native video loaded - set start position and restore volume
   const handleNativeVideoLoaded = () => {
     setIsLoading(false);
-    if (startPosition > 0 && nativeVideoRef.current) {
-      nativeVideoRef.current.currentTime = startPosition;
+    if (nativeVideoRef.current) {
+      if (startPosition > 0) {
+        nativeVideoRef.current.currentTime = startPosition;
+      }
+      // Restore volume state
+      nativeVideoRef.current.volume = getSavedVolume();
+      nativeVideoRef.current.muted = getSavedMuted();
+      nativeVideoRef.current.addEventListener('volumechange', () => {
+        if (nativeVideoRef.current) {
+          saveVolumeState(nativeVideoRef.current.volume, nativeVideoRef.current.muted);
+        }
+      });
     }
   };
 
@@ -978,6 +1061,12 @@ export function ShakaPlayer({
                         <span className="ml-2 text-green-500">✓ Säker</span>
                       )}
                     </p>
+                    {audioInfo && (
+                      <p>
+                        <strong>Ljud:</strong>{' '}
+                        <span className="text-primary">{audioInfo}</span>
+                      </p>
+                    )}
                     {diagnostics.lastError && (
                       <p><strong>Senaste fel:</strong> {diagnostics.lastError}</p>
                     )}
@@ -1042,6 +1131,31 @@ export function ShakaPlayer({
             playsInline
             data-shaka-player
           />
+        </div>
+      )}
+
+      {/* Audio info toast */}
+      {audioInfo && audioInfo.startsWith('⚠️') && (
+        <div className="absolute left-1/2 top-20 z-30 -translate-x-1/2 transform">
+          <div className="flex items-center gap-2 rounded-lg bg-background/90 px-4 py-2 text-sm text-foreground shadow-lg backdrop-blur">
+            <span>🔇</span>
+            <span>{audioInfo}</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-2 h-6 px-2 text-xs"
+              onClick={() => {
+                const video = useNativePlayer ? nativeVideoRef.current : videoRef.current;
+                if (video) {
+                  video.muted = false;
+                  saveVolumeState(video.volume, false);
+                }
+                setAudioInfo(null);
+              }}
+            >
+              Slå på ljud
+            </Button>
+          </div>
         </div>
       )}
 
