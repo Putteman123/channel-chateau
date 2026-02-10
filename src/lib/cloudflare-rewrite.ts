@@ -16,7 +16,7 @@
  */
 
 // The secure Cloudflare VPN domain that proxies to IPTV providers
-export const CLOUDFLARE_VPN_DOMAIN = 'https://vpn.premiumvinted.se';
+export const CLOUDFLARE_VPN_DOMAIN = 'https://line.premiumvinted.se';
 
 // Supabase Edge Function for IP-based URLs (universal fallback)
 export const SUPABASE_PROXY_BASE = 'https://qeeqaqsftdrtnlceqzcj.supabase.co/functions/v1/stream-proxy';
@@ -174,11 +174,9 @@ export function convertToTunnel(
     return originalUrl;
   }
   
-  // IP-based URLs should NOT go through Cloudflare tunnel
-  // They must use Supabase Edge Function instead
+  // IP-based URLs: extract path and route through tunnel too
   if (isIpAddress(originalUrl)) {
-    console.log('[cloudflare-tunnel] IP-address detected - skipping tunnel (use Edge Function)');
-    return originalUrl; // Return unchanged - caller should use tunnelOrProxy()
+    console.log('[cloudflare-tunnel] IP-address detected - routing through tunnel');
   }
   
   // Extract the path from the original URL
@@ -275,17 +273,9 @@ export function tunnelOrProxy(
   // IP addresses → Always Edge Function
   // Live HLS streams → Edge Function (for manifest rewriting)
   // Other → Cloudflare tunnel
-  if (isIpAddress(originalUrl) || isLiveStream || forceEdgeFunction) {
-    const reason = isIpAddress(originalUrl) ? 'IP address' : 
-                   isLiveStream ? 'HLS stream (needs manifest rewriting)' :
-                   'Forced';
-    console.log(`[hybrid-proxy] Using Edge Function: ${reason}`);
-    return proxyViaEdgeFunction(originalUrl, options);
-  } else {
-    // Domain non-live → Cloudflare tunnel (faster)
-    console.log('[hybrid-proxy] Using Cloudflare Tunnel: non-live domain URL');
-    return convertToTunnel(originalUrl, options);
-  }
+  // Route ALL streams through Cloudflare tunnel (line.premiumvinted.se)
+  console.log('[hybrid-proxy] Using Cloudflare Tunnel for all streams');
+  return convertToTunnel(originalUrl, options);
 }
 
 /**
