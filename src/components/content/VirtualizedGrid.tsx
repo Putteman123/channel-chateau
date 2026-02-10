@@ -1,4 +1,4 @@
-import { useMemo, useCallback, ReactNode } from 'react';
+import { useCallback, ReactNode, forwardRef } from 'react';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { cn } from '@/lib/utils';
 
@@ -8,35 +8,31 @@ interface VirtualizedGridProps<T> {
   keyExtractor: (item: T) => string | number;
   className?: string;
   emptyMessage?: string;
-  columns?: {
-    default: number;
-    sm?: number;
-    md?: number;
-    lg?: number;
-    xl?: number;
-  };
 }
 
-// Responsive grid container that matches Tailwind breakpoints
+// VirtuosoGrid requires forwardRef components
+const ListComponent = forwardRef<HTMLDivElement, any>(({ style, children, ...props }, ref) => (
+  <div
+    ref={ref}
+    {...props}
+    style={style}
+    className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+  >
+    {children}
+  </div>
+));
+ListComponent.displayName = 'GridList';
+
+const ItemComponent = forwardRef<HTMLDivElement, any>(({ children, ...props }, ref) => (
+  <div ref={ref} {...props}>
+    {children}
+  </div>
+));
+ItemComponent.displayName = 'GridItem';
+
 const gridComponents = {
-  List: ({ style, children, ...props }: any) => (
-    <div
-      {...props}
-      style={{
-        ...style,
-        display: 'grid',
-        gap: '1rem',
-      }}
-      className="grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-    >
-      {children}
-    </div>
-  ),
-  Item: ({ children, ...props }: any) => (
-    <div {...props}>
-      {children}
-    </div>
-  ),
+  List: ListComponent,
+  Item: ItemComponent,
 };
 
 export function VirtualizedGrid<T>({
