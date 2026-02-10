@@ -10,7 +10,7 @@ export const SUPABASE_PROXY_URL = import.meta.env.VITE_SUPABASE_URL
 
 // Custom Cloudflare VPN domain for Direct Tunneling (IPTV Smarters method)
 // Note: This domain proxies DIRECTLY to the IPTV provider, NOT through Edge Functions
-export const CUSTOM_PROXY_DOMAIN = 'https://vpn.premiumvinted.se';
+export const CUSTOM_PROXY_DOMAIN = 'https://line.premiumvinted.se';
 
 // Whether to prefer custom domain (will auto-fallback if unavailable)
 export const USE_CUSTOM_PROXY = true;
