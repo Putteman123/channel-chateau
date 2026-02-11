@@ -246,7 +246,7 @@ export function buildLiveStreamUrl(
   let base = buildBaseUrl(creds);
   
   // CRITICAL: Detect if server_url is incorrectly set to our proxy domain
-  const isServerAlreadyProxy = base.includes('line.premiumvinted.se');
+  const isServerAlreadyProxy = base.includes('vpn.premiumvinted.se') || base.includes('line.premiumvinted.se');
   if (isServerAlreadyProxy) {
     console.error('[XtreamAPI] ❌ server_url är felaktigt inställd till proxy-domänen!');
     return 'error://server_url_is_proxy_domain';

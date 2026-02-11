@@ -16,7 +16,7 @@
  */
 
 // The secure Cloudflare VPN domain that proxies to IPTV providers
-export const CLOUDFLARE_VPN_DOMAIN = 'https://line.premiumvinted.se';
+export const CLOUDFLARE_VPN_DOMAIN = 'https://vpn.premiumvinted.se';
 
 // Supabase Edge Function for IP-based URLs (universal fallback)
 export const SUPABASE_PROXY_BASE = 'https://qeeqaqsftdrtnlceqzcj.supabase.co/functions/v1/stream-proxy';
