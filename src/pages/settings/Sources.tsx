@@ -70,8 +70,8 @@ const xtreamSchema = z.object({
   server_url: z.string()
     .min(1, 'Server URL krävs')
     .refine(
-      (url) => !url.includes('line.premiumvinted.se'),
-      'Ange din IPTV-servers URL, inte proxy-domänen (line.premiumvinted.se). Proxy-domänen används automatiskt.'
+      (url) => !url.includes('vpn.premiumvinted.se'),
+      'Ange din IPTV-servers URL, inte VPN-proxy-domänen (vpn.premiumvinted.se). Proxy-domänen används automatiskt.'
     ),
   username: z.string().min(1, 'Användarnamn krävs'),
   password: z.string().min(1, 'Lösenord krävs'),

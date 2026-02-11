@@ -245,8 +245,10 @@ export function buildLiveStreamUrl(
   const { useProxy = true, preferTs = true, forceHttp = true, usePlayerApi = false } = options;
   let base = buildBaseUrl(creds);
   
-  // CRITICAL: Detect if server_url is incorrectly set to our proxy domain
-  const isServerAlreadyProxy = base.includes('vpn.premiumvinted.se') || base.includes('line.premiumvinted.se');
+  // CRITICAL: Detect if server_url is incorrectly set to our VPN proxy domain
+  // Note: line.premiumvinted.se is the actual IPTV provider domain (Cloudflare DNS),
+  // only vpn.premiumvinted.se is our proxy tunnel domain
+  const isServerAlreadyProxy = base.includes('vpn.premiumvinted.se');
   if (isServerAlreadyProxy) {
     console.error('[XtreamAPI] ❌ server_url är felaktigt inställd till proxy-domänen!');
     return 'error://server_url_is_proxy_domain';
