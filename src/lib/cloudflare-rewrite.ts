@@ -23,8 +23,9 @@ export const SUPABASE_PROXY_BASE = 'https://qeeqaqsftdrtnlceqzcj.supabase.co/fun
 
 // Known IPTV provider domains to rewrite
 const PROVIDER_DOMAINS = [
-  'http://line.myox.me',
   'http://line.premiumvinted.se',
+  'http://line.trxdnscloud.ru',
+  'http://line.myox.me',
 ];
 
 // Cache for domain availability
@@ -269,12 +270,26 @@ export function tunnelOrProxy(
                        originalUrl.includes('.m3u8') ||
                        originalUrl.includes('/play/');
   
-  // Route based on URL type and stream type
   // IP addresses → Always Edge Function
-  // Live HLS streams → Edge Function (for manifest rewriting)
-  // Other → Cloudflare tunnel
-  // Route ALL streams through Cloudflare tunnel (line.premiumvinted.se)
-  console.log('[hybrid-proxy] Using Cloudflare Tunnel for all streams');
+  if (isIpAddress(originalUrl)) {
+    console.log('[hybrid-proxy] IP-based URL → Edge Function proxy');
+    return proxyViaEdgeFunction(originalUrl, options);
+  }
+  
+  // Force Edge Function if requested
+  if (forceEdgeFunction) {
+    console.log('[hybrid-proxy] Forced Edge Function proxy');
+    return proxyViaEdgeFunction(originalUrl, options);
+  }
+  
+  // Live streams → Edge Function (handles manifest rewriting & redirect following)
+  if (isLiveStream) {
+    console.log('[hybrid-proxy] Live stream → Edge Function proxy (manifest rewriting)');
+    return proxyViaEdgeFunction(originalUrl, options);
+  }
+  
+  // Other → Cloudflare tunnel (faster for pass-through like VOD)
+  console.log('[hybrid-proxy] Using Cloudflare Tunnel');
   return convertToTunnel(originalUrl, options);
 }
 
