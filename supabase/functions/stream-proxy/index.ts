@@ -426,8 +426,11 @@ serve(async (req) => {
       const baseUrl = finalUrl.substring(0, finalUrl.lastIndexOf("/") + 1);
       
       // Dynamically determine proxy domain from request URL
+      // IMPORTANT: Always use HTTPS for rewritten URLs to avoid mixed-content blocking
+      // Edge runtimes may report req.url with http:// even when accessed via https://
       const requestUrl = new URL(req.url);
-      const proxyBase = `${requestUrl.origin}/functions/v1/stream-proxy`;
+      const proxyOrigin = requestUrl.origin.replace(/^http:\/\//, 'https://');
+      const proxyBase = `${proxyOrigin}/functions/v1/stream-proxy`;
       console.log(`[stream-proxy] 📝 Rewriting m3u8 with proxy base: ${proxyBase}`);
       console.log(`[stream-proxy] 📝 Base URL for relative paths: ${redactUrl(baseUrl)}`);
       
