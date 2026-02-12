@@ -16,7 +16,7 @@ export interface PlayerManagerProps extends Omit<ShakaPlayerProps, 'onError'> {
 }
 
 /** HTTP status codes that indicate provider-side blocking */
-const PROVIDER_BLOCKING_CODES = new Set([458, 551, 423, 502]);
+const PROVIDER_BLOCKING_CODES = new Set([458, 409, 551, 423, 502]);
 
 function isProviderBlocking(httpStatus?: number): boolean {
   return !!httpStatus && PROVIDER_BLOCKING_CODES.has(httpStatus);

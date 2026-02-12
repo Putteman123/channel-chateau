@@ -102,7 +102,8 @@ function diagnoseError(
   }
 
   // HTTP 458 - Provider actively blocking proxy/datacenter IPs
-  if (httpStatus === 458 || errorMessage?.includes('458')) {
+  // Note: stream-proxy maps 458 → 409 (standard) to avoid edge runtime crashes
+  if (httpStatus === 458 || httpStatus === 409 || errorMessage?.includes('458') || errorMessage?.includes('Provider blocking')) {
     return {
       type: 'network',
       message: 'Leverantören blockerar proxy-uppspelning',
@@ -597,7 +598,7 @@ export function ShakaPlayer({
         error.data?.[1] // HTTP status if available
       );
       setPlayerError(diagnosis);
-      if (diagnosis.httpStatus && onProviderBlocking && [458, 551, 423, 502].includes(diagnosis.httpStatus)) {
+      if (diagnosis.httpStatus && onProviderBlocking && [458, 409, 551, 423, 502].includes(diagnosis.httpStatus)) {
         onProviderBlocking(diagnosis.httpStatus);
       }
       setDiagnostics(prev => prev ? {

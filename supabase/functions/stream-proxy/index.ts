@@ -352,9 +352,11 @@ serve(async (req) => {
         isIpLocked = true;
         console.error(`[stream-proxy] 🔒 HTTP 551 detected - stream is IP-locked/tokenized`);
       } else if (isHttp458 || actualHttpStatus === 458) {
-        responseStatus = 458;
+        // HTTP 458 is non-standard and causes runtime errors in some edge runtimes.
+        // Map to 409 Conflict (standard) while preserving upstream status in JSON body.
+        responseStatus = 409;
         errorType = "Provider blocking";
-        hint = "HTTP 458 - leverantören blockerar datacenter-IP. Öppna strömmen i VLC/MPV.";
+        hint = "HTTP 458 (upstream) - leverantören blockerar datacenter-IP. Öppna strömmen i VLC/MPV.";
       } else if (actualHttpStatus === 429) {
         responseStatus = 429;
         errorType = "Rate limited";
