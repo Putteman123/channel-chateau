@@ -47,6 +47,8 @@ export interface ShakaPlayerProps {
   httpHeaders?: StreamHttpHeaders;
   /** Force proxy usage even for HTTPS streams */
   forceProxy?: boolean;
+  /** Called when provider blocking is detected (HTTP 458/551/502) with the status code */
+  onProviderBlocking?: (httpStatus: number) => void;
 }
 
 interface PlayerError {
@@ -263,6 +265,7 @@ export function ShakaPlayer({
   autoPlay = true,
   originalStreamUrl,
   httpHeaders,
+  onProviderBlocking,
 }: ShakaPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const nativeVideoRef = useRef<HTMLVideoElement>(null);
@@ -594,6 +597,9 @@ export function ShakaPlayer({
         error.data?.[1] // HTTP status if available
       );
       setPlayerError(diagnosis);
+      if (diagnosis.httpStatus && onProviderBlocking && [458, 551, 423, 502].includes(diagnosis.httpStatus)) {
+        onProviderBlocking(diagnosis.httpStatus);
+      }
       setDiagnostics(prev => prev ? {
         ...prev,
         lastError: error.message,
@@ -682,8 +688,11 @@ export function ShakaPlayer({
         loadError.data?.[1]
       );
       setPlayerError(diagnosis);
+      if (diagnosis.httpStatus && onProviderBlocking && [458, 551, 423, 502].includes(diagnosis.httpStatus)) {
+        onProviderBlocking(diagnosis.httpStatus);
+      }
     }
-  }, [effectiveSrc, autoPlay, startPosition, httpHeaders, useNativePlayer]);
+  }, [effectiveSrc, autoPlay, startPosition, httpHeaders, useNativePlayer, onProviderBlocking]);
 
   // Initialize Shaka player only for HLS streams (skip for native player)
   useEffect(() => {
