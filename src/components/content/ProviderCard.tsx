@@ -90,6 +90,35 @@ function getInitials(name: string): string {
   return words.slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
+// Provider logo URLs (official/well-known logos)
+const providerLogos: Record<string, string> = {
+  netflix: 'https://images.tmdb.org/t/p/original/pbpMk2JmcoNnQwx5JGpXBGjLEOl.jpg',
+  hbo: 'https://images.tmdb.org/t/p/original/nmU0UMDJB7wbfPBCnFoIMVfFsQK.jpg',
+  max: 'https://images.tmdb.org/t/p/original/nmU0UMDJB7wbfPBCnFoIMVfFsQK.jpg',
+  disney: 'https://images.tmdb.org/t/p/original/dgPueyEdOwpQ10fjuhL2WYFQwQs.jpg',
+  amazon: 'https://images.tmdb.org/t/p/original/dQeAar5H991VYporEjUs2zMgTHg.jpg',
+  prime: 'https://images.tmdb.org/t/p/original/dQeAar5H991VYporEjUs2zMgTHg.jpg',
+  apple: 'https://images.tmdb.org/t/p/original/2E03IAZsX4ZaUqM7tXlctEPMGWS.jpg',
+  hulu: 'https://images.tmdb.org/t/p/original/giwM8XX4V2AQb9vsoN7yti82tKK.jpg',
+  paramount: 'https://images.tmdb.org/t/p/original/fi83B1oztoS47xxcemFdPMhIzK.jpg',
+  peacock: 'https://images.tmdb.org/t/p/original/8VCV78prwd9QzWnEhvZryoHLqkF.jpg',
+  crunchyroll: 'https://images.tmdb.org/t/p/original/8Gt1IiWdKhUFRyap15f2YLDPrMI.jpg',
+  showtime: 'https://images.tmdb.org/t/p/original/Allse9kbjiP6OoopkpvLB2bfVLt.jpg',
+  starz: 'https://images.tmdb.org/t/p/original/pfAz9F9UTnVcNurMFJABNRNiJq.jpg',
+  mubi: 'https://images.tmdb.org/t/p/original/bVR4Z1LCHY7gidXAJF5pMa4QrDS.jpg',
+  criterion: 'https://images.tmdb.org/t/p/original/4TJTNWe1TafNx9tIrMEk4WqfcEM.jpg',
+  viaplay: 'https://images.tmdb.org/t/p/original/bnoTnLzz2MnJEwkHmQhVnEDYMjI.jpg',
+};
+
+// Get logo URL for provider
+function getProviderLogo(name: string): string | undefined {
+  const lowerName = name.toLowerCase();
+  for (const [key, url] of Object.entries(providerLogos)) {
+    if (lowerName.includes(key)) return url;
+  }
+  return undefined;
+}
+
 // Get styles for provider
 function getProviderStyles(name: string): { gradient: string; glow: string } {
   const lowerName = name.toLowerCase();
@@ -115,6 +144,7 @@ export function ProviderCard({
 }: ProviderCardProps) {
   const styles = getProviderStyles(name);
   const initials = getInitials(name);
+  const logoUrl = icon || getProviderLogo(name);
   const subscriptionInfo = getSubscriptionInfo(expiresAt ?? null);
   const isExpired = subscriptionInfo.status === 'expired';
   
@@ -150,9 +180,9 @@ export function ProviderCard({
         {/* Shine effect */}
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/20 via-transparent to-transparent" />
         
-        {icon ? (
+        {logoUrl ? (
           <LazyImage
-            src={icon}
+            src={logoUrl}
             alt={name}
             aspectRatio="square"
             className="h-12 w-12 rounded-lg object-contain"
