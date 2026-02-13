@@ -1,29 +1,26 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
-import { useOrientation } from '@/hooks/useOrientation';
 import { ContentCard } from '@/components/content/ContentCard';
 import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
 import * as XtreamAPI from '@/lib/xtream-api';
 
 export default function Movies() {
   const { t } = useTranslation();
-  const { activeSource, credentials, preferTsVod } = useStream();
+  const navigate = useNavigate();
+  const { activeSource, credentials } = useStream();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
-  const { updateHistory, getProgress } = useWatchHistory(activeSource?.id);
-  const { isLandscapeMobile } = useOrientation();
+  const { getProgress } = useWatchHistory(activeSource?.id);
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMovie, setSelectedMovie] = useState<XtreamAPI.XtreamMovie | null>(null);
 
   // Fetch categories
   const { data: categories } = useQuery({
@@ -71,31 +68,6 @@ export default function Movies() {
         item_poster: movie.stream_icon || null,
       });
     }
-  };
-
-  const getStreamUrl = (movie: XtreamAPI.XtreamMovie) => {
-    if (!credentials) return '';
-    return XtreamAPI.buildMovieStreamUrl(credentials, movie.stream_id, { 
-      extension: movie.container_extension || 'mp4',
-      preferTs: preferTsVod 
-    });
-  };
-
-  const handleProgress = (currentTime: number, duration: number) => {
-    if (!activeSource || !selectedMovie) return;
-    
-    updateHistory.mutate({
-      stream_source_id: activeSource.id,
-      item_type: 'movie',
-      item_id: String(selectedMovie.stream_id),
-      item_name: selectedMovie.name,
-      item_poster: selectedMovie.stream_icon || null,
-      position_seconds: Math.floor(currentTime),
-      duration_seconds: Math.floor(duration),
-      series_id: null,
-      season_num: null,
-      episode_num: null,
-    });
   };
 
   if (!credentials) {
@@ -149,37 +121,11 @@ export default function Movies() {
               rating={movie.rating_5based}
               progress={getProgress(activeSource!.id, 'movie', String(movie.stream_id))}
               isFavorite={isFavorite(activeSource!.id, 'movie', String(movie.stream_id))}
-              onPlay={() => setSelectedMovie(movie)}
+              onPlay={() => navigate(`/movie/${movie.stream_id}`)}
               onToggleFavorite={() => handleToggleFavorite(movie)}
             />
           ))}
         </div>
-      )}
-
-      {/* Video Player - Fullscreen in landscape mobile, Dialog otherwise */}
-      {isLandscapeMobile && selectedMovie ? (
-        <div className="fixed inset-0 z-50 bg-black">
-          <VideoPlayer
-            src={getStreamUrl(selectedMovie)}
-            title={selectedMovie.name}
-            poster={selectedMovie.stream_icon}
-            onProgress={handleProgress}
-            onClose={() => setSelectedMovie(null)}
-          />
-        </div>
-      ) : (
-        <Dialog open={!!selectedMovie} onOpenChange={() => setSelectedMovie(null)}>
-          <DialogContent className="max-w-4xl p-0">
-            {selectedMovie && (
-              <VideoPlayer
-                src={getStreamUrl(selectedMovie)}
-                title={selectedMovie.name}
-                poster={selectedMovie.stream_icon}
-                onProgress={handleProgress}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
       )}
     </div>
   );

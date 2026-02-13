@@ -7,20 +7,50 @@ export interface TMDBMetadata {
   rating: number;
   description: string;
   year?: string;
+  tmdbId?: number;
+}
+
+export interface TMDBDetailedMetadata extends TMDBMetadata {
+  cast: Array<{ name: string; character: string; profile: string | null }>;
+  genres: string[];
+  runtime?: number;
+  trailerKey?: string; // YouTube video key
+  tagline?: string;
 }
 
 /**
- * Clean title by removing year, quality tags, and other common suffixes
+ * Clean IPTV title by removing country tags, quality indicators, file extensions, etc.
+ * Examples:
+ *   "SE | Gladiator.II.2024.FHD" -> "Gladiator II"
+ *   "EN | The.Matrix.1999.4K.mkv" -> "The Matrix"
+ *   "US: Breaking Bad S01E03 720p" -> "Breaking Bad"
  */
 export function cleanTitle(title: string): string {
   return title
-    .replace(/\s*\(\d{4}\)\s*$/, '')           // Remove year: "Movie (2023)" -> "Movie"
-    .replace(/\s*-\s*\d{4}\s*$/, '')           // Remove year: "Movie - 2023" -> "Movie"
-    .replace(/\s*\[\d{4}\]\s*$/, '')           // Remove year: "Movie [2023]" -> "Movie"
-    .replace(/\[.*?\]/g, '')                    // Remove tags: "[4K]", "[HD]"
-    .replace(/\s+(4K|HD|UHD|HDR|1080p|720p|2160p)/gi, '') // Remove quality indicators
-    .replace(/\s+(S\d{2}E\d{2})/gi, '')        // Remove episode markers
-    .replace(/\s+/g, ' ')                       // Normalize whitespace
+    // Remove country/language prefixes: "SE |", "EN |", "US:", "SWE -", etc.
+    .replace(/^[A-Z]{2,3}\s*[|:\-–]\s*/i, '')
+    // Remove file extensions: .mkv, .mp4, .avi, .srt
+    .replace(/\.(mkv|mp4|avi|ts|srt|sub|idx)$/gi, '')
+    // Remove year in various formats
+    .replace(/\s*\(\d{4}\)\s*$/, '')
+    .replace(/\s*-\s*\d{4}\s*$/, '')
+    .replace(/\s*\[\d{4}\]\s*$/, '')
+    .replace(/\.\d{4}\./, ' ') // "Movie.2024.FHD" -> "Movie FHD" (year in middle)
+    // Remove quality/resolution tags
+    .replace(/\s*(4K|UHD|FHD|HD|SD|HDR|HDR10|DV|REMUX|WEB-?DL|BLU-?RAY|BRRIP|DVDRIP|HDTV|CAM|TS|TC)/gi, '')
+    .replace(/\s*(2160p|1080p|720p|480p|360p)/gi, '')
+    // Remove codec tags
+    .replace(/\s*(x264|x265|H\.?264|H\.?265|HEVC|AVC|AAC|DTS|AC3|ATMOS|DD5\.1|DD2\.0|FLAC)/gi, '')
+    // Remove tags in brackets
+    .replace(/\[.*?\]/g, '')
+    // Remove episode markers
+    .replace(/\s+(S\d{2}E\d{2})/gi, '')
+    // Replace dots/underscores with spaces (common in IPTV naming)
+    .replace(/[._]/g, ' ')
+    // Remove extra group/release tags at end (e.g. "-SPARKS", "-YIFY")
+    .replace(/\s*-\s*[A-Z]{2,}$/i, '')
+    // Normalize whitespace
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -47,8 +77,6 @@ export async function getMetadata(
 
     if (data.results && data.results.length > 0) {
       const item = data.results[0];
-      
-      // Extract year from release_date or first_air_date
       const dateField = type === 'movie' ? item.release_date : item.first_air_date;
       const year = dateField ? dateField.split('-')[0] : undefined;
 
@@ -62,6 +90,7 @@ export async function getMetadata(
         rating: item.vote_average || 0,
         description: item.overview || '',
         year,
+        tmdbId: item.id,
       };
     }
   } catch (error) {
@@ -72,8 +101,54 @@ export async function getMetadata(
 }
 
 /**
+ * Fetch detailed metadata including cast, genres, trailer
+ */
+export async function getDetailedMetadata(
+  title: string,
+  type: 'movie' | 'tv' = 'movie'
+): Promise<TMDBDetailedMetadata | null> {
+  try {
+    // First get basic search to find TMDB ID
+    const basic = await getMetadata(title, type);
+    if (!basic?.tmdbId) return null;
+
+    // Fetch details + credits + videos in one call using append_to_response
+    const detailUrl = `${BASE_URL}/${type}/${basic.tmdbId}?api_key=${TMDB_API_KEY}&language=sv-SE&append_to_response=credits,videos`;
+    const response = await fetch(detailUrl);
+    if (!response.ok) return null;
+
+    const data = await response.json();
+
+    // Extract top cast (max 10)
+    const cast = (data.credits?.cast || []).slice(0, 10).map((c: any) => ({
+      name: c.name,
+      character: c.character,
+      profile: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+    }));
+
+    // Find YouTube trailer
+    const videos = data.videos?.results || [];
+    const trailer = videos.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube')
+      || videos.find((v: any) => v.site === 'YouTube');
+
+    const genres = (data.genres || []).map((g: any) => g.name);
+
+    return {
+      ...basic,
+      cast,
+      genres,
+      runtime: data.runtime || undefined,
+      trailerKey: trailer?.key || undefined,
+      tagline: data.tagline || undefined,
+    };
+  } catch (error) {
+    console.error('TMDB Detail Error:', error);
+    return null;
+  }
+}
+
+/**
  * Batch fetch metadata for multiple titles
- * Implements staggered requests to avoid rate limiting
  */
 export async function batchGetMetadata(
   items: Array<{ title: string; type: 'movie' | 'tv' }>,
@@ -89,7 +164,6 @@ export async function batchGetMetadata(
       const metadata = await getMetadata(title, type);
       results.set(key, metadata);
       
-      // Add delay between requests to avoid rate limiting
       if (i < items.length - 1 && delayMs > 0) {
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
