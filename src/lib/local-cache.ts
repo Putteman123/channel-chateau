@@ -31,7 +31,7 @@ export interface SyncMetadata {
 }
 
 const CACHE_VERSION = 1;
-const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days for full refresh
+const CACHE_EXPIRY_MS = 3 * 24 * 60 * 60 * 1000; // 3 days for full refresh
 
 /**
  * Generic cache operations
