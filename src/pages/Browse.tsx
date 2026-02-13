@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Plus, Tv, Film, Clapperboard, Radio, TrendingUp } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Tv, Film, Clapperboard, Radio, TrendingUp, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
@@ -13,9 +13,11 @@ import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChannelCache, VODCache, SeriesCache } from '@/lib/local-cache';
+import { ChannelCache, VODCache, SeriesCache, clearSourceCache } from '@/lib/local-cache';
+import { SyncMeta } from '@/lib/local-cache';
 import * as XtreamAPI from '@/lib/xtream-api';
 import { getImageProxyUrl } from '@/lib/stream-utils';
+import { toast } from 'sonner';
 
 const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
 
@@ -26,8 +28,43 @@ export default function Browse() {
   const { continueWatching, getProgress } = useWatchHistory(activeSource?.id);
   const { favorites, isFavorite, addFavorite, removeFavorite } = useFavorites(activeSource?.id);
   const { data: trending } = useTrendingContent();
+  const queryClient = useQueryClient();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const sourceId = activeSource?.id;
+
+  const handleFullSync = async () => {
+    if (!credentials || !sourceId || isSyncing) return;
+    setIsSyncing(true);
+    toast.info('Uppdaterar biblioteket...');
+    try {
+      const [channels, movies, series] = await Promise.all([
+        XtreamAPI.getLiveStreams(credentials),
+        XtreamAPI.getVodStreams(credentials),
+        XtreamAPI.getSeries(credentials),
+      ]);
+      await Promise.all([
+        ChannelCache.set(sourceId, channels),
+        VODCache.set(sourceId, movies),
+        SeriesCache.set(sourceId, series),
+        SyncMeta.set(sourceId, {
+          lastFullSync: Date.now(),
+          channelCount: channels.length,
+          vodCount: movies.length,
+          seriesCount: series.length,
+        }),
+      ]);
+      queryClient.invalidateQueries({ queryKey: ['live-channels'] });
+      queryClient.invalidateQueries({ queryKey: ['movies'] });
+      queryClient.invalidateQueries({ queryKey: ['series'] });
+      toast.success(`Biblioteket uppdaterat! ${channels.length} kanaler, ${movies.length} filmer, ${series.length} serier`);
+    } catch (e) {
+      toast.error('Uppdatering misslyckades');
+      console.error('[Browse] Full sync error:', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const { data: liveChannels, isLoading: loadingChannels, error: channelsError, refetch: refetchChannels } = useQuery({
     queryKey: ['live-channels', credentials?.serverUrl],
@@ -184,7 +221,7 @@ export default function Browse() {
 
   return (
     <div className="space-y-6 pb-8">
-      {/* === QUICK STATS === */}
+      {/* === QUICK STATS + REFRESH === */}
       <div className="flex items-center gap-4 overflow-x-auto pb-2 scrollbar-hide">
         <Link to="/live" className="flex shrink-0 items-center gap-2 rounded-xl bg-red-600/15 px-4 py-3 text-sm font-medium text-red-400 transition-colors hover:bg-red-600/25">
           <Radio className="h-4 w-4" />
@@ -198,6 +235,14 @@ export default function Browse() {
           <Clapperboard className="h-4 w-4" />
           <span>{stats.series} serier</span>
         </Link>
+        <button
+          onClick={handleFullSync}
+          disabled={isSyncing}
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-accent/15 px-4 py-3 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/25 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+          <span>{isSyncing ? 'Uppdaterar...' : 'Uppdatera'}</span>
+        </button>
       </div>
 
       {/* === CONTINUE WATCHING === */}
