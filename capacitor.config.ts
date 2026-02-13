@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.75dc2d8aa96b483cb6655c65c33f188b',
+  appId: 'app.lovable.a75dc2d8aa96b483cb6655c65c33f188b',
   appName: 'channel-chateau',
   webDir: 'dist',
   server: {
