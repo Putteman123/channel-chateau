@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Star, Calendar } from 'lucide-react';
@@ -6,6 +7,7 @@ import { useStream } from '@/contexts/StreamContext';
 import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useTMDBMetadata } from '@/hooks/useTMDBMetadata';
 import { PlayerManager } from '@/components/player/PlayerManager';
+import { SubtitlePicker } from '@/components/player/SubtitlePicker';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import * as XtreamAPI from '@/lib/xtream-api';
@@ -16,6 +18,7 @@ export default function MoviePlayer() {
   const { t } = useTranslation();
   const { activeSource, credentials, preferTsVod, useProxy } = useStream();
   const { updateHistory, getProgress } = useWatchHistory(activeSource?.id);
+  const [subtitleUrl, setSubtitleUrl] = useState<string | null>(null);
 
   // Fetch movies list to find the current movie
   const { data: movies, isLoading } = useQuery({
@@ -42,7 +45,6 @@ export default function MoviePlayer() {
 
   const getStreamUrl = () => {
     if (!credentials || !id) return '';
-    // Try to get extension from movie container_extension or default to mp4
     const extension = movie?.container_extension || 'mp4';
     return XtreamAPI.buildMovieStreamUrl(credentials, parseInt(id), { 
       extension, 
@@ -61,7 +63,7 @@ export default function MoviePlayer() {
   };
 
   const handleClose = () => {
-    navigate('/movies');
+    navigate(-1);
   };
 
   const handleProgress = (currentTime: number, duration: number) => {
@@ -82,8 +84,7 @@ export default function MoviePlayer() {
   };
 
   const handleEnded = () => {
-    // Mark as complete and go back
-    navigate('/movies');
+    navigate(-1);
   };
 
   if (!credentials) {
@@ -102,7 +103,6 @@ export default function MoviePlayer() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col bg-black">
-        {/* Loading skeleton with movie info placeholder */}
         <div className="relative flex-1">
           <Skeleton className="h-full w-full" />
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-8">
@@ -126,7 +126,6 @@ export default function MoviePlayer() {
     );
   }
 
-  // Use TMDB data as fallback/enhancement
   const displayTitle = movie.name;
   const displayPoster = tmdbData?.poster || movie.stream_icon;
   const displayRating = tmdbData?.rating || movie.rating_5based;
@@ -149,7 +148,17 @@ export default function MoviePlayer() {
         />
       </div>
 
-      {/* Movie Info Overlay (shown on pause/initial) */}
+      {/* Subtitle picker button - top right */}
+      <div className="absolute right-14 top-4 z-50">
+        <SubtitlePicker
+          movieTitle={displayTitle}
+          tmdbId={tmdbData?.tmdbId}
+          onSubtitleLoad={(url) => setSubtitleUrl(url)}
+          onSubtitleClear={() => setSubtitleUrl(null)}
+        />
+      </div>
+
+      {/* Movie Info Overlay */}
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/60 to-transparent p-6 opacity-0 transition-opacity hover:opacity-100">
         <div className="max-w-2xl">
           <h1 className="mb-2 text-2xl font-bold text-white">{displayTitle}</h1>
