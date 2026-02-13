@@ -1,6 +1,10 @@
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Category {
   id: string;
@@ -19,35 +23,21 @@ export function CategoryFilter({
   onSelectCategory,
 }: CategoryFilterProps) {
   return (
-    <ScrollArea className="w-full whitespace-nowrap">
-      <div className="flex gap-2 pb-3">
-        <Button
-          variant={selectedCategory === null ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onSelectCategory(null)}
-          className={cn(
-            'shrink-0',
-            selectedCategory === null && 'bg-primary text-primary-foreground'
-          )}
-        >
-          Alla
-        </Button>
+    <Select
+      value={selectedCategory ?? 'all'}
+      onValueChange={(value) => onSelectCategory(value === 'all' ? null : value)}
+    >
+      <SelectTrigger className="w-full max-w-xs">
+        <SelectValue placeholder="Alla kategorier" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">Alla</SelectItem>
         {categories.map((category) => (
-          <Button
-            key={category.id}
-            variant={selectedCategory === category.id ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => onSelectCategory(category.id)}
-            className={cn(
-              'shrink-0',
-              selectedCategory === category.id && 'bg-primary text-primary-foreground'
-            )}
-          >
+          <SelectItem key={category.id} value={category.id}>
             {category.name}
-          </Button>
+          </SelectItem>
         ))}
-      </div>
-      <ScrollBar orientation="horizontal" />
-    </ScrollArea>
+      </SelectContent>
+    </Select>
   );
 }
