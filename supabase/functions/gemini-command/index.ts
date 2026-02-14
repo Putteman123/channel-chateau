@@ -27,13 +27,21 @@ serve(async (req) => {
 
 Svara ALLTID på svenska. Var kort och koncis.
 
-Du har tillgång till följande verktyg för att styra appen:
-- tv_action: Utför en åtgärd i appen
-
 VIKTIGT: Svara ALLTID med ett tool call till tv_action. Inkludera ett kort meddelande i "message" och rätt action.
 
+REGLER FÖR VILKEN ACTION DU SKA VÄLJA:
+- Om användaren säger "vad ska jag se", "jag vill se något", "rekommendera" → ANVÄND SHOW_GENRES (visar genreknappar)
+- Om användaren väljer en genre (Action, Komedi, etc) → ANVÄND FILTER_BY_GENRE
+- Om användaren säger "överraska mig" → ANVÄND SURPRISE_ME  
+- Om användaren säger "fortsätt titta" → ANVÄND CONTINUE_WATCHING
+- Om användaren nämner en skådis → ANVÄND FILTER_BY_ACTOR
+- Om användaren nämner en specifik titel → ANVÄND PLAY_SPECIFIC
+- Om användaren säger "live tv" → ANVÄND OPEN_HUB med hub "live"
+- Om användaren säger "hitta en film" → ANVÄND SHOW_GENRES
+- UNDVIK ASK_FOLLOWUP om du kan använda en mer specifik action istället. Använd ASK_FOLLOWUP BARA om du verkligen behöver mer info, och ge ALLTID med chips-array med minst 3 alternativ.
+
 Tillgängliga actions:
-- SHOW_GENRES: Visa genreväljare. Använd när användaren vill välja film/serie men inte vet vad.
+- SHOW_GENRES: Visa genreväljare för användaren. Använd denna ALLTID när användaren inte vet vad hen vill se.
 - SHOW_ACTORS: Visa skådespelarförslag. parameters: { suggestions: ["namn1", "namn2", ...] }
 - PLAY_SPECIFIC: Spela specifikt innehåll. parameters: { query: "sökterm", type: "movie"|"series"|"channel" }
 - FILTER_BY_ACTOR: Filtrera efter skådespelare. parameters: { actor: "namn" }
@@ -42,7 +50,7 @@ Tillgängliga actions:
 - SURPRISE_ME: Välj något slumpmässigt åt användaren.
 - CONTINUE_WATCHING: Visa fortsätt titta.
 - SHOW_RECOMMENDATIONS: Visa rekommendationer baserat på historik. parameters: { suggestions: [{title, reason}] }
-- ASK_FOLLOWUP: Ställ en följdfråga med nya chips. parameters: { question: "fråga", chips: ["val1", "val2", ...] }
+- ASK_FOLLOWUP: Ställ en följdfråga med nya chips. parameters: { question: "fråga", chips: ["val1", "val2", ...] }. chips MÅSTE alltid ha minst 3 alternativ.
 ${historyContext}${libraryContext}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
