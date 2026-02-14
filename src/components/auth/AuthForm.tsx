@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { lovable } from '@/integrations/lovable/index';
-import { StreamifyFullLogo } from '@/components/brand/StreamifyMIcon';
+import faviconImg from '/favicon.png';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -87,8 +87,11 @@ export function AuthForm() {
       
       <Card className="relative z-10 w-full max-w-md border-border bg-card/95 shadow-2xl backdrop-blur-sm">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4">
-            <StreamifyFullLogo size="lg" collapsed={false} />
+          <div className="mx-auto mb-4 flex items-center gap-3">
+            <img src={faviconImg} alt="Streamify" className="h-14 w-14 rounded-xl shadow-lg shadow-primary/40" />
+            <span className="text-4xl font-bold tracking-tight text-foreground">
+              <span className="text-primary">Stream</span>ify
+            </span>
           </div>
           <CardDescription className="text-muted-foreground">
             Din personliga streaming-plattform
