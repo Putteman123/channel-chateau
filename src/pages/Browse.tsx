@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Tv, Film, Clapperboard, Radio, TrendingUp, RefreshCw } from 'lucide-react';
+import { Plus, Tv, Film, Clapperboard, Radio, RefreshCw } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStream } from '@/contexts/StreamContext';
@@ -8,6 +8,7 @@ import { useWatchHistory } from '@/hooks/useWatchHistory';
 import { useFavorites } from '@/hooks/useFavorites';
 import { useTrendingContent } from '@/hooks/useTrendingContent';
 import { ContentCarousel } from '@/components/content/ContentCarousel';
+import { GeminiCommandCenter } from '@/components/ai/GeminiCommandCenter';
 import { PosterCard } from '@/components/content/PosterCard';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
@@ -261,49 +262,8 @@ export default function Browse() {
         </ContentCarousel>
       )}
 
-      {/* === TRENDING MOVIES (Perplexity) === */}
-      {trending?.movies && trending.movies.length > 0 && (
-        <ContentCarousel title="🔥 Trending filmer just nu">
-          {trending.movies.map((movie, i) => (
-            <div key={i} className="shrink-0 w-[140px] sm:w-[160px]">
-              <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted">
-                {movie.poster ? (
-                  <img src={movie.poster} alt={movie.title} className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl">🎬</div>
-                )}
-                <div className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                  {i + 1}
-                </div>
-              </div>
-              <p className="mt-1.5 truncate text-xs font-medium text-foreground">{movie.title}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{movie.year} · {movie.description}</p>
-            </div>
-          ))}
-        </ContentCarousel>
-      )}
-
-      {/* === TRENDING SERIES (Perplexity) === */}
-      {trending?.series && trending.series.length > 0 && (
-        <ContentCarousel title="🔥 Trending serier just nu">
-          {trending.series.map((s, i) => (
-            <div key={i} className="shrink-0 w-[140px] sm:w-[160px]">
-              <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-muted">
-                {s.poster ? (
-                  <img src={s.poster} alt={s.title} className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl">📺</div>
-                )}
-                <div className="absolute left-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                  {i + 1}
-                </div>
-              </div>
-              <p className="mt-1.5 truncate text-xs font-medium text-foreground">{s.title}</p>
-              <p className="truncate text-[10px] text-muted-foreground">{s.year} · {s.description}</p>
-            </div>
-          ))}
-        </ContentCarousel>
-      )}
+      {/* === GEMINI COMMAND CENTER === */}
+      <GeminiCommandCenter stats={stats} />
 
       {/* === LIVE TV === */}
       {featuredChannels.length > 0 && (
