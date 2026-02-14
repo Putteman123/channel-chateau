@@ -49,6 +49,8 @@ export interface ShakaPlayerProps {
   forceProxy?: boolean;
   /** Called when provider blocking is detected (HTTP 458/551/502) with the status code */
   onProviderBlocking?: (httpStatus: number) => void;
+  /** URL to a WebVTT subtitle file to render as a text track */
+  subtitleUrl?: string | null;
 }
 
 interface PlayerError {
@@ -267,6 +269,7 @@ export function ShakaPlayer({
   originalStreamUrl,
   httpHeaders,
   onProviderBlocking,
+  subtitleUrl,
 }: ShakaPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const nativeVideoRef = useRef<HTMLVideoElement>(null);
@@ -716,6 +719,35 @@ export function ShakaPlayer({
     };
   }, [initPlayer, useNativePlayer]);
 
+  // Load subtitle track via Shaka's text track API (for HLS/MSE streams)
+  useEffect(() => {
+    if (useNativePlayer || !playerRef.current || !subtitleUrl) return;
+    const player = playerRef.current;
+
+    (async () => {
+      try {
+        // Remove existing text tracks first
+        const existing = player.getTextTracks();
+        if (existing.length > 0) {
+          player.setTextTrackVisibility(false);
+        }
+
+        await player.addTextTrackAsync(
+          subtitleUrl,
+          'sv',
+          'subtitles',
+          'text/vtt',
+          undefined,
+          'Undertext'
+        );
+        player.setTextTrackVisibility(true);
+        console.log('[ShakaPlayer] Subtitle track loaded via Shaka API');
+      } catch (e) {
+        console.warn('[ShakaPlayer] Failed to add text track via Shaka, falling back to <track> element:', e);
+      }
+    })();
+  }, [subtitleUrl, useNativePlayer]);
+
   // Handle video ended event - works for both native and Shaka player
   useEffect(() => {
     const video = useNativePlayer ? nativeVideoRef.current : videoRef.current;
@@ -1122,7 +1154,11 @@ export function ShakaPlayer({
             onError={handleNativeVideoError}
             onLoadedData={handleNativeVideoLoaded}
             onLoadStart={() => setIsLoading(true)}
-          />
+          >
+            {subtitleUrl && (
+              <track kind="subtitles" src={subtitleUrl} srcLang="sv" label="Undertext" default />
+            )}
+          </video>
         </div>
       )}
 
@@ -1140,7 +1176,11 @@ export function ShakaPlayer({
             poster={poster}
             playsInline
             data-shaka-player
-          />
+          >
+            {subtitleUrl && (
+              <track kind="subtitles" src={subtitleUrl} srcLang="sv" label="Undertext" default />
+            )}
+          </video>
         </div>
       )}
 

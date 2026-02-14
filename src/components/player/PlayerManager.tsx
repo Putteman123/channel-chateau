@@ -13,6 +13,8 @@ export interface PlayerManagerProps extends Omit<ShakaPlayerProps, 'onError'> {
   allowHotSwap?: boolean;
   /** Original (non-proxied) stream URL for native player */
   originalStreamUrl?: string;
+  /** URL to a WebVTT subtitle file */
+  subtitleUrl?: string | null;
 }
 
 /** HTTP status codes that indicate provider-side blocking */
