@@ -34,7 +34,7 @@ export function AdminLayout() {
         <div className="flex h-full flex-col">
           {/* Header */}
           <div className="flex h-16 items-center gap-3 border-b border-admin-border px-6">
-            <Shield className="h-8 w-8 text-admin-primary" />
+            <img src="/favicon.png" alt="Streamify" className="h-8 w-8 rounded-lg" />
             <div>
               <h1 className="font-bold text-admin-foreground">Admin Panel</h1>
               <p className="text-xs text-admin-muted-foreground">Channel Chateau</p>

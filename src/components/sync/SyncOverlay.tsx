@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, CloudDownload, Tv, Film, Clapperboard, Calendar, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { StreamifyMIcon } from '@/components/brand/StreamifyMIcon';
+import faviconImg from '/favicon.png';
 import { SyncProgress, SyncStage } from '@/hooks/useSyncEngine';
 
 interface SyncOverlayProps {
@@ -88,7 +88,7 @@ export function SyncOverlay({ syncProgress, onRetry }: SyncOverlayProps) {
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1 }}
           >
-            <StreamifyMIcon size="xl" />
+            <img src={faviconImg} alt="Streamify" className="h-24 w-24 rounded-xl shadow-lg shadow-primary/40" />
           </motion.div>
           
           {/* Title */}
