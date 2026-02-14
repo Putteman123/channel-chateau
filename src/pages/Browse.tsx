@@ -14,13 +14,10 @@ import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChannelCache, VODCache, SeriesCache, clearSourceCache } from '@/lib/local-cache';
-import { SyncMeta } from '@/lib/local-cache';
+import { ChannelCache, VODCache, SeriesCache, SyncMeta } from '@/lib/local-cache';
 import * as XtreamAPI from '@/lib/xtream-api';
 import { getImageProxyUrl } from '@/lib/stream-utils';
 import { toast } from 'sonner';
-
-const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
 
 export default function Browse() {
   const { t } = useTranslation();
@@ -69,73 +66,23 @@ export default function Browse() {
 
   const { data: liveChannels, isLoading: loadingChannels, error: channelsError, refetch: refetchChannels } = useQuery({
     queryKey: ['live-channels', credentials?.serverUrl],
-    queryFn: async () => {
-      if (!credentials) return [];
-      if (sourceId) {
-        const cached = await ChannelCache.get(sourceId);
-        if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
-          const age = Date.now() - cached.timestamp;
-          if (age < THREE_DAYS) {
-            console.log(`[Browse] ⚡ Loaded ${cached.data.length} channels from cache (fresh)`);
-            return cached.data as XtreamAPI.XtreamChannel[];
-          }
-          // Cache stale, return cached but refresh in bg
-          XtreamAPI.getLiveStreams(credentials).then(fresh => {
-            if (fresh.length > 0) ChannelCache.set(sourceId, fresh);
-          }).catch(() => {});
-          return cached.data as XtreamAPI.XtreamChannel[];
-        }
-      }
-      return XtreamAPI.getLiveStreams(credentials);
-    },
+    queryFn: () => credentials ? XtreamAPI.getLiveStreams(credentials) : [],
     enabled: !!credentials,
-    staleTime: THREE_DAYS,
+    staleTime: 3 * 24 * 60 * 60 * 1000,
   });
 
   const { data: movies, isLoading: loadingMovies, error: moviesError, refetch: refetchMovies } = useQuery({
     queryKey: ['movies', credentials?.serverUrl],
-    queryFn: async () => {
-      if (!credentials) return [];
-      if (sourceId) {
-        const cached = await VODCache.get(sourceId);
-        if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
-          const age = Date.now() - cached.timestamp;
-          if (age < THREE_DAYS) {
-            return cached.data as XtreamAPI.XtreamMovie[];
-          }
-          XtreamAPI.getVodStreams(credentials).then(fresh => {
-            if (fresh.length > 0) VODCache.set(sourceId, fresh);
-          }).catch(() => {});
-          return cached.data as XtreamAPI.XtreamMovie[];
-        }
-      }
-      return XtreamAPI.getVodStreams(credentials);
-    },
+    queryFn: () => credentials ? XtreamAPI.getVodStreams(credentials) : [],
     enabled: !!credentials,
-    staleTime: THREE_DAYS,
+    staleTime: 3 * 24 * 60 * 60 * 1000,
   });
 
   const { data: series, isLoading: loadingSeries, error: seriesError, refetch: refetchSeries } = useQuery({
     queryKey: ['series', credentials?.serverUrl],
-    queryFn: async () => {
-      if (!credentials) return [];
-      if (sourceId) {
-        const cached = await SeriesCache.get(sourceId);
-        if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
-          const age = Date.now() - cached.timestamp;
-          if (age < THREE_DAYS) {
-            return cached.data as XtreamAPI.XtreamSeries[];
-          }
-          XtreamAPI.getSeries(credentials).then(fresh => {
-            if (fresh.length > 0) SeriesCache.set(sourceId, fresh);
-          }).catch(() => {});
-          return cached.data as XtreamAPI.XtreamSeries[];
-        }
-      }
-      return XtreamAPI.getSeries(credentials);
-    },
+    queryFn: () => credentials ? XtreamAPI.getSeries(credentials) : [],
     enabled: !!credentials,
-    staleTime: THREE_DAYS,
+    staleTime: 3 * 24 * 60 * 60 * 1000,
   });
 
   // === STATS ===
