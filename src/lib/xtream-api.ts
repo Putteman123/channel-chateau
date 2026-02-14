@@ -443,6 +443,15 @@ async function proxyApiCall<T>(
   return data as T;
 }
 
+// ── IndexedDB cache integration ──
+import { ChannelCache, VODCache, SeriesCache, SyncMeta } from '@/lib/local-cache';
+
+const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+
+function sourceIdFromCreds(creds: XtreamCredentials): string {
+  return `${creds.serverUrl}|${creds.username}`;
+}
+
 // Authenticate with Xtream Codes server
 export async function authenticate(creds: XtreamCredentials): Promise<XtreamAuthInfo> {
   const data = await proxyApiCall<XtreamAuthInfo>(creds);
@@ -457,10 +466,26 @@ export async function getLiveCategories(creds: XtreamCredentials): Promise<Xtrea
   return proxyApiCall<XtreamCategory[]>(creds, 'get_live_categories');
 }
 
-// Get live channels
+// Get live channels — with IndexedDB cache
 export async function getLiveStreams(creds: XtreamCredentials, categoryId?: string): Promise<XtreamChannel[]> {
+  const sid = sourceIdFromCreds(creds);
+  // Per-category requests skip cache
+  if (!categoryId) {
+    const cached = await ChannelCache.get(sid);
+    if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
+      if (Date.now() - cached.timestamp < THREE_DAYS) {
+        console.log(`[XtreamAPI] ⚡ Cache hit: ${cached.data.length} channels`);
+        return cached.data as XtreamChannel[];
+      }
+    }
+  }
   const params = categoryId ? { category_id: categoryId } : undefined;
-  return proxyApiCall<XtreamChannel[]>(creds, 'get_live_streams', params);
+  const fresh = await proxyApiCall<XtreamChannel[]>(creds, 'get_live_streams', params);
+  if (!categoryId && fresh.length > 0) {
+    ChannelCache.set(sid, fresh).catch(() => {});
+    SyncMeta.set(sid, { channelCount: fresh.length }).catch(() => {});
+  }
+  return fresh;
 }
 
 // Get VOD categories
@@ -468,10 +493,25 @@ export async function getVodCategories(creds: XtreamCredentials): Promise<Xtream
   return proxyApiCall<XtreamCategory[]>(creds, 'get_vod_categories');
 }
 
-// Get VOD streams (movies)
+// Get VOD streams — with IndexedDB cache
 export async function getVodStreams(creds: XtreamCredentials, categoryId?: string): Promise<XtreamMovie[]> {
+  const sid = sourceIdFromCreds(creds);
+  if (!categoryId) {
+    const cached = await VODCache.get(sid);
+    if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
+      if (Date.now() - cached.timestamp < THREE_DAYS) {
+        console.log(`[XtreamAPI] ⚡ Cache hit: ${cached.data.length} movies`);
+        return cached.data as XtreamMovie[];
+      }
+    }
+  }
   const params = categoryId ? { category_id: categoryId } : undefined;
-  return proxyApiCall<XtreamMovie[]>(creds, 'get_vod_streams', params);
+  const fresh = await proxyApiCall<XtreamMovie[]>(creds, 'get_vod_streams', params);
+  if (!categoryId && fresh.length > 0) {
+    VODCache.set(sid, fresh).catch(() => {});
+    SyncMeta.set(sid, { vodCount: fresh.length }).catch(() => {});
+  }
+  return fresh;
 }
 
 // Get series categories
@@ -479,10 +519,25 @@ export async function getSeriesCategories(creds: XtreamCredentials): Promise<Xtr
   return proxyApiCall<XtreamCategory[]>(creds, 'get_series_categories');
 }
 
-// Get series list
+// Get series list — with IndexedDB cache
 export async function getSeries(creds: XtreamCredentials, categoryId?: string): Promise<XtreamSeries[]> {
+  const sid = sourceIdFromCreds(creds);
+  if (!categoryId) {
+    const cached = await SeriesCache.get(sid);
+    if (cached?.data && Array.isArray(cached.data) && cached.data.length > 0) {
+      if (Date.now() - cached.timestamp < THREE_DAYS) {
+        console.log(`[XtreamAPI] ⚡ Cache hit: ${cached.data.length} series`);
+        return cached.data as XtreamSeries[];
+      }
+    }
+  }
   const params = categoryId ? { category_id: categoryId } : undefined;
-  return proxyApiCall<XtreamSeries[]>(creds, 'get_series', params);
+  const fresh = await proxyApiCall<XtreamSeries[]>(creds, 'get_series', params);
+  if (!categoryId && fresh.length > 0) {
+    SeriesCache.set(sid, fresh).catch(() => {});
+    SyncMeta.set(sid, { seriesCount: fresh.length }).catch(() => {});
+  }
+  return fresh;
 }
 
 // Get series info with episodes
