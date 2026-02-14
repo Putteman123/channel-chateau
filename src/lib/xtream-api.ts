@@ -359,12 +359,51 @@ export function buildSeriesStreamUrl(
   return directUrl;
 }
 
-// Proxy API call through edge function to avoid CORS/Mixed Content issues
+/**
+ * Direct API call to IPTV server (used on native platforms)
+ * No proxy needed — native WebView doesn't have CORS/Mixed Content restrictions
+ */
+async function directApiCall<T>(
+  creds: XtreamCredentials,
+  action?: string,
+  params?: Record<string, string | number>
+): Promise<T> {
+  let url = buildApiUrl(creds, action);
+  if (params) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      searchParams.set(key, String(value));
+    });
+    url += '&' + searchParams.toString();
+  }
+  
+  console.log('[XtreamAPI] 📱 Direct API call:', action, url.substring(0, 80) + '...');
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`API call failed: HTTP ${response.status}`);
+  }
+  
+  const data = await response.json();
+  console.log('[XtreamAPI] 📱 Direct response, length:', Array.isArray(data) ? data.length : 'object');
+  return data as T;
+}
+
+// Proxy API call through edge function to avoid CORS/Mixed Content issues (web only)
 async function proxyApiCall<T>(
   creds: XtreamCredentials,
   action?: string,
   params?: Record<string, string | number>
 ): Promise<T> {
+  // 🚀 NATIVE: Skip proxy entirely, call IPTV server directly
+  if (Capacitor.isNativePlatform()) {
+    return directApiCall<T>(creds, action, params);
+  }
+
   console.log('[XtreamAPI] Calling proxy with action:', action, 'params:', params);
   
   const { data, error } = await supabase.functions.invoke('xtream-proxy', {
@@ -381,8 +420,6 @@ async function proxyApiCall<T>(
 
   if (error) {
     console.error('[XtreamAPI] Function invoke error:', error);
-    // When edge function returns non-2xx, Supabase returns `error` and may still include JSON in `data`.
-    // Preserve upstream details so the UI can detect proxy blocks (502/ECONNREFUSED) and show proper guidance.
     const extra =
       data && typeof data === 'object'
         ? JSON.stringify(data)
@@ -397,7 +434,6 @@ async function proxyApiCall<T>(
     throw new Error('No data returned from API');
   }
 
-  // Handle error in response data
   if (typeof data === 'object' && data !== null && 'error' in data) {
     console.error('[XtreamAPI] API error:', data.error);
     throw new Error(data.error as string);
