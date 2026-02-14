@@ -171,15 +171,15 @@ export default function Browse() {
     <div className="space-y-6 pb-8">
       {/* === QUICK STATS + REFRESH === */}
       <div className="flex items-center gap-4 overflow-x-auto pb-2 scrollbar-hide">
-        <Link to="/live" className="flex shrink-0 items-center gap-2 rounded-xl bg-red-600/15 px-4 py-3 text-sm font-medium text-red-400 transition-colors hover:bg-red-600/25">
+        <Link to="/live" className="flex shrink-0 items-center gap-2 rounded-xl bg-primary/15 px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/25">
           <Radio className="h-4 w-4" />
           <span>{stats.channels} kanaler</span>
         </Link>
-        <Link to="/movies" className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600/15 px-4 py-3 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-600/25">
+        <Link to="/movies" className="flex shrink-0 items-center gap-2 rounded-xl bg-secondary px-4 py-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/80">
           <Film className="h-4 w-4" />
           <span>{stats.movies} filmer</span>
         </Link>
-        <Link to="/series" className="flex shrink-0 items-center gap-2 rounded-xl bg-purple-600/15 px-4 py-3 text-sm font-medium text-purple-400 transition-colors hover:bg-purple-600/25">
+        <Link to="/series" className="flex shrink-0 items-center gap-2 rounded-xl bg-muted px-4 py-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/80">
           <Clapperboard className="h-4 w-4" />
           <span>{stats.series} serier</span>
         </Link>
@@ -217,8 +217,8 @@ export default function Browse() {
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600">
-                <Tv className="h-4 w-4 text-white" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+                <Tv className="h-4 w-4 text-primary-foreground" />
               </div>
               <h2 className="text-xl font-semibold text-foreground lg:text-2xl">Live TV</h2>
             </div>
@@ -235,8 +235,8 @@ export default function Browse() {
                   ) : (
                     <div className="flex h-full w-full items-center justify-center"><span className="text-2xl">📺</span></div>
                   )}
-                  <div className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    <span className="h-1 w-1 animate-pulse rounded-full bg-white" />LIVE
+                  <div className="absolute left-1.5 top-1.5 flex items-center gap-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                    <span className="h-1 w-1 animate-pulse rounded-full bg-primary-foreground" />LIVE
                   </div>
                 </div>
                 <p className="mt-1.5 max-w-[128px] truncate text-center text-xs text-muted-foreground group-hover:text-foreground sm:max-w-[160px]">{channel.name}</p>
