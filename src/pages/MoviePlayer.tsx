@@ -144,6 +144,7 @@ export default function MoviePlayer() {
           onClose={handleClose}
           onProgress={handleProgress}
           onEnded={handleEnded}
+          subtitleUrl={subtitleUrl}
           autoPlay
         />
       </div>
