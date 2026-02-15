@@ -1,6 +1,8 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { useNativePlatform } from '@/hooks/useNativePlatform';
-import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export interface NativeVideoPlayerProps {
   src: string;
@@ -15,6 +17,7 @@ export interface NativeVideoPlayerProps {
 }
 
 const PLAYER_ID = 'native-iptv-player';
+const LOADING_TIMEOUT_MS = 15000; // 15 seconds timeout
 
 // Lazy-load the video player plugin to avoid triggerEvent crash on startup
 let VideoPlayerModule: typeof import('@capgo/capacitor-video-player') | null = null;
@@ -38,10 +41,20 @@ export function NativeVideoPlayer({
   startPosition = 0,
 }: NativeVideoPlayerProps) {
   const { isNative, platform } = useNativePlatform();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isInitializedRef = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleClose = useCallback(() => {
+    if (onClose) {
+      onClose();
+    } else {
+      navigate(-1);
+    }
+  }, [onClose, navigate]);
 
   const initPlayer = useCallback(async () => {
     if (!isNative) {
@@ -61,6 +74,14 @@ export function NativeVideoPlayer({
       setIsLoading(true);
       setError(null);
 
+      // Set a timeout so user isn't stuck forever
+      timeoutRef.current = setTimeout(() => {
+        if (isInitializedRef.current) return; // already loaded
+        console.warn('[NativeVideoPlayer] Loading timed out after', LOADING_TIMEOUT_MS, 'ms');
+        setError('Uppspelningen tog för lång tid. Kontrollera din internetanslutning eller prova en annan kanal.');
+        setIsLoading(false);
+      }, LOADING_TIMEOUT_MS);
+
       await VP.initPlayer({
         mode: 'fullscreen',
         url: src,
@@ -77,6 +98,7 @@ export function NativeVideoPlayer({
       });
 
       isInitializedRef.current = true;
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       console.log('[NativeVideoPlayer] Player initialized successfully');
 
       if (startPosition > 0) {
@@ -110,6 +132,7 @@ export function NativeVideoPlayer({
         }, 5000);
       }
     } catch (err) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       console.error('[NativeVideoPlayer] Init error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to initialize player';
       setError(errorMessage);
@@ -123,6 +146,7 @@ export function NativeVideoPlayer({
     initPlayer();
 
     return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
@@ -142,20 +166,38 @@ export function NativeVideoPlayer({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
+      {/* Always show a close/back button */}
+      <Button
+        size="icon"
+        variant="ghost"
+        className="absolute left-4 top-4 z-[60] text-white hover:bg-white/20"
+        onClick={handleClose}
+      >
+        <ArrowLeft className="h-6 w-6" />
+      </Button>
+
       {isLoading && (
         <div className="flex flex-col items-center gap-4 text-white">
           <Loader2 className="h-12 w-12 animate-spin" />
           <p className="text-lg">Startar uppspelning...</p>
           {title && <p className="text-sm text-muted-foreground">{title}</p>}
+          <p className="mt-4 text-xs text-muted-foreground">
+            Tryck på pilen för att gå tillbaka
+          </p>
         </div>
       )}
       {error && (
         <div className="flex flex-col items-center gap-4 text-white">
           <p className="text-lg text-destructive">Kunde inte spela upp</p>
-          <p className="text-sm text-muted-foreground">{error}</p>
-          <button onClick={onClose} className="mt-4 rounded-lg bg-primary px-6 py-2 text-primary-foreground">
-            Stäng
-          </button>
+          <p className="max-w-xs text-center text-sm text-muted-foreground">{error}</p>
+          <div className="mt-4 flex gap-3">
+            <Button onClick={() => { setError(null); setIsLoading(true); initPlayer(); }} variant="default">
+              Försök igen
+            </Button>
+            <Button onClick={handleClose} variant="outline" className="text-white border-white/30">
+              Gå tillbaka
+            </Button>
+          </div>
         </div>
       )}
     </div>
