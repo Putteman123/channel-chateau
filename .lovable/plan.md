@@ -1,20 +1,50 @@
 
 
-## Fixa emulatorn: Aktivera hot-reload och ProGuard
+## Bygga en APK för din riktiga telefon
 
-### Steg 1: Uppdatera `capacitor.config.ts`
-Avkommentera `server`-blocket så appen laddas från Lovable-förhandsvisningen istället för lokala filer. Detta löser problemet med att appen hänger sig vid start.
+Det här kräver inga kodändringar i Lovable -- allt görs lokalt på din dator.
 
-### Steg 2: Användarens steg efter ändringen
-Kör dessa kommandon lokalt:
+### Steg-för-steg
+
+1. **Öppna terminalen** i din projektmapp (där `android/`-mappen finns)
+
+2. **Bygg webappen och synka**:
 ```text
 npm run build
 npx cap sync android
-npx cap run android
 ```
 
-### Tekniska detaljer
-- `capacitor.config.ts`: Aktiverar `server.url` till `https://75dc2d8a-a96b-483c-b665-5c65c33f188b.lovableproject.com?forceHideBadge=true` med `cleartext: true`
-- Appen kommer att ladda gränssnittet via nätverket istället för från den lokala `dist/`-mappen, vilket kringgår problemet med att WebView inte kan starta appen korrekt i emulatorn
-- ProGuard-felet (`proguard-android.txt` vs `proguard-android-optimize.txt`) behöver fixas manuellt i `android/app/build.gradle` lokalt om det uppstår vid release-byggen
+3. **Bygg debug-APK med Gradle**:
+```text
+cd android
+./gradlew assembleDebug
+```
+På Windows, använd `gradlew.bat assembleDebug` istället.
+
+4. **Hitta APK-filen**:
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+5. **Installera på telefonen** -- välj ett av dessa sätt:
+   - **Via USB**: Anslut telefonen med USB-kabel, aktivera "USB-felsökning" i utvecklarinställningar, kör sedan:
+     ```text
+     adb install android/app/build/outputs/apk/debug/app-debug.apk
+     ```
+   - **Via filöverföring**: Kopiera APK-filen till telefonen (via USB, e-post, Google Drive etc.) och öppna filen direkt på telefonen. Du behöver tillåta "Installera från okända källor" i telefonens inställningar.
+
+### Viktigt att veta
+- Debug-APK:n är inte signerad för publicering i Play Store, men fungerar utmärkt för testning på din egen telefon
+- Appen laddar gränssnittet från Lovable-förhandsvisningen via nätet (hot-reload), så telefonen måste ha internetåtkomst
+- Om du vill bygga en fristående APK som inte kräver nätverksanslutning till Lovable behöver vi ändra tillbaka `capacitor.config.ts` så appen använder lokala filer (`dist/`) istället
+
+### Om ProGuard-fel uppstår
+Ändra i `android/app/build.gradle` -- byt ut:
+```text
+proguard-android.txt
+```
+till:
+```text
+proguard-android-optimize.txt
+```
 
