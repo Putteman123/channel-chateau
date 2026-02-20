@@ -75,7 +75,23 @@ serve(async (req) => {
       }),
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    
+    // Check if response is actually JSON before parsing
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json') && !responseText.trim().startsWith('{')) {
+      console.error('Perplexity returned non-JSON:', responseText.substring(0, 300));
+      throw new Error(`Perplexity API returned non-JSON response (status ${response.status}). The API may be temporarily unavailable.`);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error('Failed to parse response:', responseText.substring(0, 300));
+      throw new Error(`Invalid JSON from Perplexity API (status ${response.status})`);
+    }
+
     if (!response.ok) {
       throw new Error(`Perplexity API error [${response.status}]: ${JSON.stringify(data)}`);
     }
