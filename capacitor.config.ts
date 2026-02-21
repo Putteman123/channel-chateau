@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'channel-chateau',
   webDir: 'dist',
   server: {
-    url: 'https://75dc2d8a-a96b-483c-b665-5c65c33f188b.lovableproject.com?forceHideBadge=true',
+    url: 'https://id-preview--75dc2d8a-a96b-483c-b665-5c65c33f188b.lovable.app?forceHideBadge=true',
     cleartext: true,
   },
   android: {
