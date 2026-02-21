@@ -14,7 +14,7 @@ import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
 import { VirtualizedGrid } from '@/components/content/VirtualizedGrid';
-import { ShakaPlayer, StreamHttpHeaders } from '@/components/player/ShakaPlayer';
+import { PlayerManager } from '@/components/player/PlayerManager';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -320,12 +320,11 @@ export default function LiveTV() {
       {/* Video Player - Fullscreen in landscape mobile, Dialog otherwise */}
       {isLandscapeMobile && playingChannel ? (
         <div className="fixed inset-0 z-50 bg-black">
-          <ShakaPlayer
+          <PlayerManager
             src={getStreamUrl(playingChannel)}
             originalStreamUrl={getOriginalStreamUrl(playingChannel)}
             title={playingChannel.name}
             poster={playingChannel.stream_icon}
-            httpHeaders={getHttpHeaders(playingChannel)}
             onClose={() => setPlayingChannel(null)}
           />
         </div>
@@ -333,12 +332,11 @@ export default function LiveTV() {
         <Dialog open={!!playingChannel} onOpenChange={() => setPlayingChannel(null)}>
           <DialogContent className="max-w-5xl p-0">
             {playingChannel && (
-              <ShakaPlayer
+              <PlayerManager
                 src={getStreamUrl(playingChannel)}
                 originalStreamUrl={getOriginalStreamUrl(playingChannel)}
                 title={playingChannel.name}
                 poster={playingChannel.stream_icon}
-                httpHeaders={getHttpHeaders(playingChannel)}
                 onClose={() => setPlayingChannel(null)}
               />
             )}
