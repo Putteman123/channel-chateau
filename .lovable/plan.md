@@ -1,50 +1,41 @@
 
 
-## Bygga en APK för din riktiga telefon
+## GitHub Actions: Bygg Android APK automatiskt
 
-Det här kräver inga kodändringar i Lovable -- allt görs lokalt på din dator.
+### Vad vi gör
+Skapar en GitHub Actions workflow-fil som bygger en Android debug-APK i molnet. Du kan sedan ladda ner APK-filen direkt från GitHub -- perfekt när du jobbar från surfplattan.
 
-### Steg-för-steg
-
-1. **Öppna terminalen** i din projektmapp (där `android/`-mappen finns)
-
-2. **Bygg webappen och synka**:
-```text
-npm run build
-npx cap sync android
-```
-
-3. **Bygg debug-APK med Gradle**:
-```text
-cd android
-./gradlew assembleDebug
-```
-På Windows, använd `gradlew.bat assembleDebug` istället.
-
-4. **Hitta APK-filen**:
-```text
-android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-5. **Installera på telefonen** -- välj ett av dessa sätt:
-   - **Via USB**: Anslut telefonen med USB-kabel, aktivera "USB-felsökning" i utvecklarinställningar, kör sedan:
-     ```text
-     adb install android/app/build/outputs/apk/debug/app-debug.apk
-     ```
-   - **Via filöverföring**: Kopiera APK-filen till telefonen (via USB, e-post, Google Drive etc.) och öppna filen direkt på telefonen. Du behöver tillåta "Installera från okända källor" i telefonens inställningar.
+### Hur det fungerar
+1. Du går till ditt GitHub-repo, klickar **Actions** och väljer **"Build Android APK"**
+2. Klickar **"Run workflow"**
+3. Väntar ca 5-10 minuter
+4. Laddar ner den färdiga APK-filen som en zip under **Artifacts**
 
 ### Viktigt att veta
-- Debug-APK:n är inte signerad för publicering i Play Store, men fungerar utmärkt för testning på din egen telefon
-- Appen laddar gränssnittet från Lovable-förhandsvisningen via nätet (hot-reload), så telefonen måste ha internetåtkomst
-- Om du vill bygga en fristående APK som inte kräver nätverksanslutning till Lovable behöver vi ändra tillbaka `capacitor.config.ts` så appen använder lokala filer (`dist/`) istället
+Den nuvarande appen laddar sitt gränssnitt från Lovables servrar (hot-reload). APK:n kommer alltså kräva internetanslutning för att fungera. Om du vill ha en helt fristående app behöver vi ändra Capacitor-konfigurationen i ett separat steg.
 
-### Om ProGuard-fel uppstår
-Ändra i `android/app/build.gradle` -- byt ut:
-```text
-proguard-android.txt
-```
-till:
-```text
-proguard-android-optimize.txt
-```
+---
+
+### Tekniska detaljer
+
+**Ny fil:** `.github/workflows/build-android.yml`
+
+Workflowet gör följande steg:
+
+1. **Trigger:** `workflow_dispatch` (manuell start från GitHub)
+2. **Runner:** `ubuntu-latest`
+3. **Setup:**
+   - Checkar ut koden
+   - Installerar Node.js 20
+   - Installerar JDK 17
+4. **Build:**
+   - `npm ci` -- installerar dependencies
+   - `npm run build` -- bygger React-appen till `dist/`
+   - `npx cap add android` -- skapar `android/`-mappen (den finns inte i repot)
+   - `npx cap sync android` -- syncar webbinnehållet till Android-projektet
+5. **Gradle:**
+   - Gör `gradlew` körbar
+   - Kör `./gradlew assembleDebug` i `android/`-mappen
+6. **Artifact:**
+   - Laddar upp `android/app/build/outputs/apk/debug/app-debug.apk` som en nedladdningsbar artifact med 7 dagars lagring
 
