@@ -115,6 +115,7 @@ export function useSyncEngine(): SyncEngineResult {
   
   /**
    * Full sync - downloads all data from API to local cache
+   * Populates React Query cache directly to prevent Browse from re-fetching
    */
   const startFullSync = useCallback(async () => {
     if (!activeSource || syncingRef.current) return;
@@ -127,6 +128,8 @@ export function useSyncEngine(): SyncEngineResult {
     
     syncingRef.current = true;
     const sourceId = activeSource.id;
+    // Use both keys so both SyncEngine and xtream-api can read the cache
+    const credsCacheKey = `${credentials.serverUrl}|${credentials.username}`;
     
     try {
       // Stage 1: Checking
@@ -137,7 +140,8 @@ export function useSyncEngine(): SyncEngineResult {
         isInitialSync: true,
       });
       
-      await new Promise(r => setTimeout(r, 300));
+      // Yield to UI thread between stages
+      await new Promise(r => setTimeout(r, 100));
       
       // Stage 2: Channels
       setSyncProgress({
@@ -148,7 +152,15 @@ export function useSyncEngine(): SyncEngineResult {
       });
       
       const channels = await XtreamAPI.getLiveStreams(credentials);
-      await ChannelCache.set(sourceId, channels);
+      // Write to both cache keys (sourceId for SyncMeta, credsCacheKey for xtream-api reads)
+      await Promise.all([
+        ChannelCache.set(sourceId, channels),
+        ChannelCache.set(credsCacheKey, channels),
+      ]);
+      // Populate React Query cache directly — prevents Browse from re-fetching
+      queryClient.setQueryData(['live-channels', credentials.serverUrl], channels);
+      
+      await new Promise(r => setTimeout(r, 50)); // yield
       
       setSyncProgress({
         stage: 'channels',
@@ -166,7 +178,13 @@ export function useSyncEngine(): SyncEngineResult {
       });
       
       const movies = await XtreamAPI.getVodStreams(credentials);
-      await VODCache.set(sourceId, movies);
+      await Promise.all([
+        VODCache.set(sourceId, movies),
+        VODCache.set(credsCacheKey, movies),
+      ]);
+      queryClient.setQueryData(['movies', credentials.serverUrl], movies);
+      
+      await new Promise(r => setTimeout(r, 50)); // yield
       
       setSyncProgress({
         stage: 'movies',
@@ -184,7 +202,13 @@ export function useSyncEngine(): SyncEngineResult {
       });
       
       const series = await XtreamAPI.getSeries(credentials);
-      await SeriesCache.set(sourceId, series);
+      await Promise.all([
+        SeriesCache.set(sourceId, series),
+        SeriesCache.set(credsCacheKey, series),
+      ]);
+      queryClient.setQueryData(['series', credentials.serverUrl], series);
+      
+      await new Promise(r => setTimeout(r, 50)); // yield
       
       setSyncProgress({
         stage: 'series',
@@ -227,10 +251,7 @@ export function useSyncEngine(): SyncEngineResult {
       
       setNeedsInitialSync(false);
       
-      // Invalidate queries to use fresh data
-      queryClient.invalidateQueries({ queryKey: ['live-channels'] });
-      queryClient.invalidateQueries({ queryKey: ['vod-streams'] });
-      queryClient.invalidateQueries({ queryKey: ['series'] });
+      // No need to invalidateQueries — we already set the data directly above
       
       console.log('[SyncEngine] Full sync complete:', {
         channels: channels.length,
@@ -267,6 +288,7 @@ export function useSyncEngine(): SyncEngineResult {
     if (!credentials) return;
     
     console.log('[SyncEngine] Starting delta sync...');
+    const credsCacheKey = `${credentials.serverUrl}|${credentials.username}`;
     
     try {
       // Quick check - fetch counts only to detect changes
@@ -287,11 +309,14 @@ export function useSyncEngine(): SyncEngineResult {
       if (hasChanges) {
         console.log('[SyncEngine] Delta sync found changes, updating cache...');
         
-        // Update cache with new data
+        // Update cache with both keys
         await Promise.all([
           ChannelCache.set(activeSource.id, channels),
+          ChannelCache.set(credsCacheKey, channels),
           VODCache.set(activeSource.id, movies),
+          VODCache.set(credsCacheKey, movies),
           SeriesCache.set(activeSource.id, series),
+          SeriesCache.set(credsCacheKey, series),
         ]);
         
         await SyncMeta.set(activeSource.id, {
@@ -308,10 +333,10 @@ export function useSyncEngine(): SyncEngineResult {
           lastSync: Date.now(),
         });
         
-        // Invalidate queries
-        queryClient.invalidateQueries({ queryKey: ['live-channels'] });
-        queryClient.invalidateQueries({ queryKey: ['vod-streams'] });
-        queryClient.invalidateQueries({ queryKey: ['series'] });
+        // Set data directly instead of invalidating (prevents re-fetch)
+        queryClient.setQueryData(['live-channels', credentials.serverUrl], channels);
+        queryClient.setQueryData(['movies', credentials.serverUrl], movies);
+        queryClient.setQueryData(['series', credentials.serverUrl], series);
       } else {
         console.log('[SyncEngine] Delta sync: no changes detected');
         await SyncMeta.set(activeSource.id, {
