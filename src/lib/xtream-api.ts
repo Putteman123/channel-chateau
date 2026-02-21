@@ -296,6 +296,13 @@ export function buildLiveStreamUrl(
     return tunnelStreamUrl(directUrl);
   }
   
+  // Even if proxy is disabled, we MUST proxy HTTP URLs in the browser
+  // to avoid Mixed Content blocks (HTTPS page can't load HTTP streams)
+  if (directUrl.startsWith('http://') && typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    console.log('[XtreamAPI] ⚠️ use_proxy=false but HTTP on HTTPS page — forcing proxy to avoid Mixed Content');
+    return tunnelStreamUrl(directUrl);
+  }
+  
   return directUrl;
 }
 
