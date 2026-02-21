@@ -2,10 +2,10 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'app.lovable.a75dc2d8aa96b483cb6655c65c33f188b',
-  appName: 'channel-chateau',
+  appName: 'Streamify',
   webDir: 'dist',
   server: {
-    url: 'https://id-preview--75dc2d8a-a96b-483c-b665-5c65c33f188b.lovable.app?forceHideBadge=true',
+    // Production: loads from local dist (no server.url)
     cleartext: true,
   },
   android: {
@@ -13,6 +13,12 @@ const config: CapacitorConfig = {
   },
   ios: {
     contentInset: 'automatic',
+  },
+  plugins: {
+    CapacitorVideoPlayer: {
+      // Use ExoPlayer (best for Android IPTV streams)
+      pip: true,
+    },
   },
 };
 
