@@ -44,118 +44,6 @@ interface PlayerConfigResponse {
   };
   error?: string;
   message?: string;
-  paymentStatus?: string;
-}
-
-interface PaymentVerificationResult {
-  isValid: boolean;
-  status: "active" | "pending" | "failed" | "canceled" | "expired";
-  expiryDate?: string;
-  message?: string;
-  error?: string;
-}
-
-function verifyRevolutPayment(paymentData: {
-  revolut_account_id?: string;
-  payment_status?: string;
-  last_payment_date?: string;
-}): PaymentVerificationResult {
-  const PAYMENT_VALIDITY_DAYS = 30;
-
-  if (!paymentData || !paymentData.revolut_account_id) {
-    return {
-      isValid: false,
-      status: "failed",
-      error: "No Revolut account linked",
-    };
-  }
-
-  const status = (paymentData.payment_status || "pending") as PaymentVerificationResult["status"];
-
-  if (status === "canceled" || status === "failed" || status === "expired") {
-    return {
-      isValid: false,
-      status,
-      error: `Payment status is ${status}`,
-    };
-  }
-
-  if (paymentData.last_payment_date) {
-    const lastPaymentTime = new Date(paymentData.last_payment_date).getTime();
-    const now = Date.now();
-    const daysSincePayment = (now - lastPaymentTime) / (1000 * 60 * 60 * 24);
-
-    if (daysSincePayment > PAYMENT_VALIDITY_DAYS) {
-      const expiryDate = new Date(lastPaymentTime + PAYMENT_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
-      return {
-        isValid: false,
-        status: "expired",
-        error: `Payment expired after ${PAYMENT_VALIDITY_DAYS} days`,
-        expiryDate: expiryDate.toISOString(),
-      };
-    }
-
-    const expiryDate = new Date(lastPaymentTime + PAYMENT_VALIDITY_DAYS * 24 * 60 * 60 * 1000);
-    return {
-      isValid: true,
-      status: "active",
-      expiryDate: expiryDate.toISOString(),
-      message: `Payment valid until ${expiryDate.toISOString().split("T")[0]}`,
-    };
-  }
-
-  if (status === "pending") {
-    return {
-      isValid: false,
-      status: "pending",
-      error: "Payment pending - awaiting confirmation",
-    };
-  }
-
-  return {
-    isValid: status === "active",
-    status,
-    message: status === "active" ? "Payment is active" : undefined,
-  };
-}
-
-function getPaymentErrorResponse(verification: PaymentVerificationResult): {
-  statusCode: number;
-  error: string;
-  message: string;
-} {
-  switch (verification.status) {
-    case "pending":
-      return {
-        statusCode: 402,
-        error: "payment_pending",
-        message: "Payment is pending - please wait for confirmation",
-      };
-    case "failed":
-      return {
-        statusCode: 402,
-        error: "payment_failed",
-        message: "Payment failed - please check your Revolut account",
-      };
-    case "canceled":
-      return {
-        statusCode: 402,
-        error: "payment_canceled",
-        message: "Payment was canceled",
-      };
-    case "expired":
-      return {
-        statusCode: 402,
-        error: "payment_expired",
-        message: `Payment expired on ${verification.expiryDate?.split("T")[0]}`,
-      };
-    default:
-      return {
-        statusCode: 403,
-        error: "payment_invalid",
-        message: "Payment verification failed",
-      };
-  }
 }
 
 function parseAuthHeader(authHeader?: string): string | null {
@@ -203,9 +91,6 @@ async function fetchUserProfile(
   userId: string,
   token: string
 ): Promise<{
-  revolut_account_id?: string;
-  payment_status?: string;
-  last_payment_date?: string;
   is_banned?: boolean;
 } | null> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -217,7 +102,7 @@ async function fetchUserProfile(
 
   try {
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/profiles?user_id=eq.${encodeURIComponent(userId)}&select=revolut_account_id,payment_status,last_payment_date,is_banned`,
+      `${supabaseUrl}/rest/v1/profiles?user_id=eq.${encodeURIComponent(userId)}&select=is_banned`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -384,26 +269,6 @@ Deno.serve(async (req: Request) => {
         }),
         {
           status: 403,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-    }
-
-    const paymentVerification = verifyRevolutPayment(profile);
-    if (!paymentVerification.isValid) {
-      const errorResponse = getPaymentErrorResponse(paymentVerification);
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: errorResponse.error,
-          message: errorResponse.message,
-          paymentStatus: paymentVerification.status,
-        }),
-        {
-          status: errorResponse.statusCode,
           headers: {
             ...corsHeaders,
             "Content-Type": "application/json",
