@@ -135,12 +135,31 @@ serve(async (req) => {
 
     if (!response) {
       const message = lastNetworkError instanceof Error ? lastNetworkError.message : "Upstream fetch failed";
+
+      // Classify the error for better user feedback
+      const messageLower = message.toLowerCase();
+      let userFriendlyError = "Upstream unreachable";
+      let hint = "Din IPTV-leverantör kan blockera datacenter-IP eller kräva HTTPS. Prova att skriva server-URL med https:// (om den stöds) eller testa från ett annat nätverk.";
+
+      if (messageLower.includes('dns') || messageLower.includes('getaddrinfo') || messageLower.includes('enotfound')) {
+        userFriendlyError = "DNS error - server not found";
+        hint = `Servern "${serverUrl}" kunde inte hittas. Detta kan bero på:\n1. Felaktig server-URL\n2. DNS-konfigurationsproblem hos IPTV-leverantören\n3. Servern är nere eller otillgänglig\n\nKontakta din IPTV-leverantör för support.`;
+      } else if (messageLower.includes('timeout') || messageLower.includes('timed out')) {
+        userFriendlyError = "Connection timeout";
+        hint = "Servern svarar inte i tid. Detta kan bero på att servern är överbelastad, långsam, eller blockerar datacenter-IP-adresser. Prova igen om en stund.";
+      } else if (messageLower.includes('econnrefused') || messageLower.includes('connection refused')) {
+        userFriendlyError = "Connection refused";
+        hint = "Servern nekar anslutningar. Prova att växla mellan HTTP och HTTPS, eller kontakta din IPTV-leverantör.";
+      } else if (messageLower.includes('certificate') || messageLower.includes('ssl')) {
+        userFriendlyError = "SSL/Certificate error";
+        hint = "Servern har ett ogiltigt säkerhetscertifikat. Prova att använda HTTP istället för HTTPS.";
+      }
+
       return new Response(
         JSON.stringify({
-          error: "Upstream unreachable",
+          error: userFriendlyError,
           details: message,
-          hint:
-            "Din IPTV-leverantör kan blockera datacenter-IP eller kräva HTTPS. Prova att skriva server-URL med https:// (om den stöds) eller testa från ett annat nätverk.",
+          hint: hint,
         }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );

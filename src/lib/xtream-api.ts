@@ -400,6 +400,51 @@ async function directApiCall<T>(
   return data as T;
 }
 
+// Enhanced error messages for common issues
+function enhanceErrorMessage(error: string, serverUrl: string): string {
+  const lowercaseError = error.toLowerCase();
+
+  // DNS errors
+  if (lowercaseError.includes('dns') ||
+      lowercaseError.includes('getaddrinfo') ||
+      lowercaseError.includes('enotfound') ||
+      lowercaseError.includes('name resolution')) {
+    return `DNS-fel: Kan inte hitta servern "${serverUrl}". Kontrollera att din IPTV-leverantörs server är tillgänglig och att URL:en är korrekt.`;
+  }
+
+  // Connection refused
+  if (lowercaseError.includes('econnrefused') || lowercaseError.includes('connection refused')) {
+    return `Anslutning nekad: Servern "${serverUrl}" nekar anslutningar. Kontrollera om servern är igång eller prova att ändra mellan HTTP/HTTPS.`;
+  }
+
+  // Timeout
+  if (lowercaseError.includes('timeout') || lowercaseError.includes('timed out')) {
+    return `Timeout: Servern svarar inte i tid. Detta kan bero på att servern är överbelastad, långsam, eller blockerar datacenter-IP-adresser.`;
+  }
+
+  // Certificate errors
+  if (lowercaseError.includes('certificate') || lowercaseError.includes('ssl')) {
+    return `SSL/Certifikatfel: Servern har ett ogiltigt säkerhetscertifikat. Prova att använda HTTP istället för HTTPS.`;
+  }
+
+  // Network unreachable
+  if (lowercaseError.includes('unreachable') || lowercaseError.includes('network')) {
+    return `Nätverksfel: Kan inte nå servern. Kontrollera din internetanslutning eller att servern inte blockerar åtkomst från din region.`;
+  }
+
+  // Cloudflare specific errors
+  if (lowercaseError.includes('cloudflare') || lowercaseError.includes('error 1016')) {
+    return `Cloudflare DNS-fel: Servern använder Cloudflare men har felaktig DNS-konfiguration. Detta är ett problem hos din IPTV-leverantör som de måste åtgärda.`;
+  }
+
+  // Generic upstream error
+  if (lowercaseError.includes('upstream')) {
+    return `Serverfel: Din IPTV-leverantör är för närvarande otillgänglig. Prova igen senare eller kontakta din leverantör.`;
+  }
+
+  return error;
+}
+
 // Proxy API call through edge function to avoid CORS/Mixed Content issues (web only)
 async function proxyApiCall<T>(
   creds: XtreamCredentials,
@@ -412,7 +457,7 @@ async function proxyApiCall<T>(
   }
 
   console.log('[XtreamAPI] Calling proxy with action:', action, 'params:', params);
-  
+
   const { data, error } = await supabase.functions.invoke('xtream-proxy', {
     body: {
       serverUrl: creds.serverUrl,
@@ -427,23 +472,29 @@ async function proxyApiCall<T>(
 
   if (error) {
     console.error('[XtreamAPI] Function invoke error:', error);
+    const rawMessage = error.message || 'Unknown error';
+    const enhancedMessage = enhanceErrorMessage(rawMessage, creds.serverUrl);
+
     const extra =
       data && typeof data === 'object'
         ? JSON.stringify(data)
         : typeof data === 'string'
           ? data
           : '';
-    throw new Error(extra ? `API call failed: ${error.message} | ${extra}` : `API call failed: ${error.message}`);
+
+    throw new Error(extra ? `${enhancedMessage} | ${extra}` : enhancedMessage);
   }
 
   if (!data) {
     console.error('[XtreamAPI] No data returned from proxy');
-    throw new Error('No data returned from API');
+    throw new Error('Inget svar från servern. Kontrollera att servern är online och åtkomlig.');
   }
 
   if (typeof data === 'object' && data !== null && 'error' in data) {
     console.error('[XtreamAPI] API error:', data.error);
-    throw new Error(data.error as string);
+    const errorString = String(data.error);
+    const enhancedMessage = enhanceErrorMessage(errorString, creds.serverUrl);
+    throw new Error(enhancedMessage);
   }
 
   console.log('[XtreamAPI] Returning data, length:', Array.isArray(data) ? data.length : 'not array');

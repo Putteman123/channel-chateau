@@ -13,6 +13,7 @@ import { CategoryFilter } from '@/components/content/CategoryFilter';
 import { SearchBar } from '@/components/content/SearchBar';
 import { ContentSkeleton } from '@/components/content/ContentSkeleton';
 import { LoadError } from '@/components/content/LoadError';
+import { SourceErrorBanner } from '@/components/content/SourceErrorBanner';
 import { VirtualizedGrid } from '@/components/content/VirtualizedGrid';
 import { PlayerManager } from '@/components/player/PlayerManager';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -211,6 +212,13 @@ export default function LiveTV() {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
+
+      {(xtreamError || m3uData.error) && (
+        <SourceErrorBanner
+          error={(xtreamError || m3uData.error) as Error}
+          sourceName={activeSource?.name}
+        />
+      )}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="flex-1">
