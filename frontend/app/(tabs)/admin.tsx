@@ -23,7 +23,7 @@ interface Stats {
 
 export default function AdminScreen() {
   const { colors } = useTheme();
-  const user = useAuthStore(state => state.user);
+  const { user } = useAuth();
   const [stats, setStats] = useState<Stats>({
     totalUsers: 0,
     totalPlaylists: 0,
