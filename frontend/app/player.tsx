@@ -100,7 +100,7 @@ function WebVideoPlayer({
 
     // Load HLS.js if needed
     const loadVideo = async () => {
-      if (url.includes('.m3u8')) {
+      if (url.includes('.m3u8') || url.includes('/api/proxy/m3u8')) {
         // Use HLS.js for M3U8 streams
         try {
           const Hls = (await import('hls.js')).default;
