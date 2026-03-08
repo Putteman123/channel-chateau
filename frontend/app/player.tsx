@@ -13,6 +13,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { Video } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 
 // Helper to encode URL for proxy
@@ -39,19 +40,6 @@ const getProxyUrl = (originalUrl: string): string => {
   }
   return `/api/proxy/stream?url=${encodedUrl}`;
 };
-
-// Import video components based on platform
-let Video: any = null;
-let VideoNative: any = null;
-
-if (Platform.OS !== 'web') {
-  try {
-    VideoNative = require('react-native-video').default;
-  } catch (e) {
-    const AV = require('expo-av');
-    Video = AV.Video;
-  }
-}
 
 // Web video player using HLS.js for better HLS support
 function WebVideoPlayer({ 
