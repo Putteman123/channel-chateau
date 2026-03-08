@@ -49,7 +49,7 @@ export default function AdminScreen() {
       // For now, we'll calculate stats from user's own data
       // In production, add admin-only endpoints in backend
       const playlistsRes = await api.get('/playlists');
-      const playlists = playlistsRes.data;
+      const playlists = Array.isArray(playlistsRes.data) ? playlistsRes.data : [];
       
       const totalChannels = playlists.reduce((sum: number, pl: any) => sum + (pl.channel_count || 0), 0);
       const totalMovies = playlists.reduce((sum: number, pl: any) => sum + (pl.movie_count || 0), 0);
