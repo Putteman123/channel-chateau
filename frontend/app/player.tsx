@@ -298,16 +298,14 @@ export default function PlayerScreen() {
   };
 
   const togglePlayPause = () => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web' || !videoRef.current) return;
     
-    if (Video && videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pauseAsync?.();
-      } else {
-        videoRef.current.playAsync?.();
-      }
-      setIsPlaying(!isPlaying);
+    if (isPlaying) {
+      videoRef.current.pauseAsync?.();
+    } else {
+      videoRef.current.playAsync?.();
     }
+    setIsPlaying(!isPlaying);
   };
 
   const renderVideoPlayer = () => {
