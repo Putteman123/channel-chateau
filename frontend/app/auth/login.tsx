@@ -56,10 +56,12 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Ionicons name="tv" size={64} color={colors.primary} />
-            <Text style={[styles.title, { color: colors.text }]}>IPTV Player</Text>
+            <View style={[styles.logoContainer, { backgroundColor: colors.primary + '15' }]}>
+              <Ionicons name="play-circle" size={48} color={colors.primary} />
+            </View>
+            <Text style={[styles.title, { color: colors.text }]}>Streamify</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Logga in för att fortsätta
+              Din ultimata streaming-upplevelse
             </Text>
           </View>
 
