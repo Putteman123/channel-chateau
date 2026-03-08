@@ -331,30 +331,6 @@ export default function PlayerScreen() {
       );
     }
 
-    // Native player
-    if (VideoNative) {
-      return (
-        <VideoNative
-          ref={videoRef}
-          source={{ uri: streamUrl }}
-          style={styles.video}
-          resizeMode="contain"
-          onLoad={handleLoad}
-          onError={handleError}
-          onBuffer={handleBuffer}
-          onProgress={handleProgress}
-          repeat={false}
-          controls={false}
-          paused={!isPlaying}
-          bufferConfig={{
-            minBufferMs: 15000,
-            maxBufferMs: 50000,
-            bufferForPlaybackMs: 2500,
-            bufferForPlaybackAfterRebufferMs: 5000,
-          }}
-        />
-      );
-    }
     
     // Fallback to expo-av
     if (Video) {
