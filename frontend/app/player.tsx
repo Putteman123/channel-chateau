@@ -196,65 +196,7 @@ function WebVideoPlayer({
   );
 }
 
-// Native video player using react-native-video
-function NativeVideoPlayer({
-  url,
-  onError,
-  onLoad,
-  onBuffer,
-  onProgress,
-  videoRef,
-}: {
-  url: string;
-  onError: (error: any) => void;
-  onLoad: () => void;
-  onBuffer: (data: { isBuffering: boolean }) => void;
-  onProgress: (data: any) => void;
-  videoRef: React.RefObject<any>;
-}) {
-  if (VideoNative) {
-    return (
-      <VideoNative
-        ref={videoRef}
-        source={{ uri: url }}
-        style={styles.video}
-        resizeMode="contain"
-        onLoad={onLoad}
-        onError={onError}
-        onBuffer={onBuffer}
-        onProgress={onProgress}
-        repeat={false}
-        controls={false}
-        paused={false}
-        bufferConfig={{
-          minBufferMs: 15000,
-          maxBufferMs: 50000,
-          bufferForPlaybackMs: 2500,
-          bufferForPlaybackAfterRebufferMs: 5000,
-        }}
-      />
-    );
-  }
-  
-  // Fallback to expo-av
-  if (Video) {
-    return (
-      <Video
-        ref={videoRef}
-        source={{ uri: url }}
-        style={styles.video}
-        resizeMode="contain"
-        shouldPlay={true}
-        isLooping={false}
-        onLoad={onLoad}
-        onError={onError}
-        useNativeControls={false}
-      />
-    );
-  }
-  
-  return null;
-}
+ 
 
 export default function PlayerScreen() {
   const router = useRouter();
