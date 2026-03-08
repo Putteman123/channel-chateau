@@ -300,10 +300,7 @@ export default function PlayerScreen() {
   const togglePlayPause = () => {
     if (Platform.OS === 'web') return;
     
-    if (VideoNative && videoRef.current) {
-      setIsPlaying(!isPlaying);
-      // react-native-video uses paused prop, we toggle it via state
-    } else if (Video && videoRef.current) {
+    if (Video && videoRef.current) {
       if (isPlaying) {
         videoRef.current.pauseAsync?.();
       } else {
