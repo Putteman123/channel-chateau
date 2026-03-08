@@ -1,45 +1,173 @@
+diff --git a/frontend/app/player.tsx b/frontend/app/player.tsx
+index 49fd78a..1974741 100644
+--- a/frontend/app/player.tsx
++++ b/frontend/app/player.tsx
+@@ -100,7 +100,7 @@ function WebVideoPlayer({
+ 
+     // Load HLS.js if needed
+     const loadVideo = async () => {
+-      if (url.includes('.m3u8')) {
++      if (url.includes('.m3u8') || url.includes('/api/proxy/m3u8')) {
+         // Use HLS.js for M3U8 streams
+         try {
+           const Hls = (await import('hls.js')).default;
+@@ -196,65 +196,7 @@ function WebVideoPlayer({
+   );
+ }
+ 
+-// Native video player using react-native-video
+-function NativeVideoPlayer({
+-  url,
+-  onError,
+-  onLoad,
+-  onBuffer,
+-  onProgress,
+-  videoRef,
+-}: {
+-  url: string;
+-  onError: (error: any) => void;
+-  onLoad: () => void;
+-  onBuffer: (data: { isBuffering: boolean }) => void;
+-  onProgress: (data: any) => void;
+-  videoRef: React.RefObject<any>;
+-}) {
+-  if (VideoNative) {
+-    return (
+-      <VideoNative
+-        ref={videoRef}
+-        source={{ uri: url }}
+-        style={styles.video}
+-        resizeMode="contain"
+-        onLoad={onLoad}
+-        onError={onError}
+-        onBuffer={onBuffer}
+-        onProgress={onProgress}
+-        repeat={false}
+-        controls={false}
+-        paused={false}
+-        bufferConfig={{
+-          minBufferMs: 15000,
+-          maxBufferMs: 50000,
+-          bufferForPlaybackMs: 2500,
+-          bufferForPlaybackAfterRebufferMs: 5000,
+-        }}
+-      />
+-    );
+-  }
+-  
+-  // Fallback to expo-av
+-  if (Video) {
+-    return (
+-      <Video
+-        ref={videoRef}
+-        source={{ uri: url }}
+-        style={styles.video}
+-        resizeMode="contain"
+-        shouldPlay={true}
+-        isLooping={false}
+-        onLoad={onLoad}
+-        onError={onError}
+-        useNativeControls={false}
+-      />
+-    );
+-  }
+-  
+-  return null;
+-}
++ 
+ 
+ export default function PlayerScreen() {
+   const router = useRouter();
+@@ -358,10 +300,7 @@ export default function PlayerScreen() {
+   const togglePlayPause = () => {
+     if (Platform.OS === 'web') return;
+     
+-    if (VideoNative && videoRef.current) {
+-      setIsPlaying(!isPlaying);
+-      // react-native-video uses paused prop, we toggle it via state
+-    } else if (Video && videoRef.current) {
++    if (Video && videoRef.current) {
+       if (isPlaying) {
+         videoRef.current.pauseAsync?.();
+       } else {
+@@ -392,30 +331,6 @@ export default function PlayerScreen() {
+       );
+     }
+ 
+-    // Native player
+-    if (VideoNative) {
+-      return (
+-        <VideoNative
+-          ref={videoRef}
+-          source={{ uri: streamUrl }}
+-          style={styles.video}
+-          resizeMode="contain"
+-          onLoad={handleLoad}
+-          onError={handleError}
+-          onBuffer={handleBuffer}
+-          onProgress={handleProgress}
+-          repeat={false}
+-          controls={false}
+-          paused={!isPlaying}
+-          bufferConfig={{
+-            minBufferMs: 15000,
+-            maxBufferMs: 50000,
+-            bufferForPlaybackMs: 2500,
+-            bufferForPlaybackAfterRebufferMs: 5000,
+-          }}
+-        />
+-      );
+-    }
+     
+     // Fallback to expo-av
+     if (Video) {
 diff --git a/model.patch b/model.patch
-index 161a12c..e69de29 100644
+index 2417e44..e69de29 100644
 --- a/model.patch
 +++ b/model.patch
-@@ -1,40 +0,0 @@
+@@ -1,45 +0,0 @@
 -diff --git a/model.patch b/model.patch
--index 8dde1a4..e69de29 100644
+-index 161a12c..e69de29 100644
 ---- a/model.patch
 -+++ b/model.patch
--@@ -1,35 +0,0 @@
---diff --git a/test_result.md b/test_result.md
---index 0553abe..06ba8b2 100644
------ a/test_result.md
---+++ b/test_result.md
---@@ -167,15 +167,18 @@ backend:
--- 
---   - task: "Video proxy for CORS bypass"
---     implemented: true
----    working: "NA"
---+    working: true
---     file: "server.py"
---     stuck_count: 0
---     priority: "high"
----    needs_retesting: true
---+    needs_retesting: false
---     status_history:
---       - working: "NA"
---         agent: "main"
---         comment: "Implemented /api/proxy/stream and /api/proxy/m3u8 endpoints to proxy video streams and playlists. Uses aiohttp to fetch content server-side and stream back to client. Supports HLS (.m3u8) and direct streams (.ts, .mp4). Needs backend testing."
---+      - working: true
---+        agent: "testing"
---+        comment: "✅ BACKEND TESTING COMPLETE - Both proxy endpoints working correctly. /api/proxy/stream successfully proxies video streams with proper CORS headers. /api/proxy/m3u8 correctly rewrites M3U8 playlists to route all URLs through proxy. Tested with real HLS streams and MP4 files. Error handling works for invalid URLs and malformed base64. Ready for frontend integration testing."
--- 
--- frontend:
---   - task: "Authentication screens (login/register)"
---@@ -283,4 +286,6 @@ agent_communication:
---   - agent: "main"
---     message: "Initial implementation complete with all core features"
---   - agent: "main"
----    message: "Implemented video proxy solution. Backend has /api/proxy/stream and /api/proxy/m3u8 endpoints. Frontend player.tsx updated to use getProxyUrl() on web platform. Ready for backend testing with a sample stream URL."
---\ No newline at end of file
---+    message: "Implemented video proxy solution. Backend has /api/proxy/stream and /api/proxy/m3u8 endpoints. Frontend player.tsx updated to use getProxyUrl() on web platform. Ready for backend testing with a sample stream URL."
---+  - agent: "testing"
---+    message: "✅ BACKEND PROXY TESTING COMPLETE - Video proxy endpoints are fully functional. Both /api/proxy/stream and /api/proxy/m3u8 work correctly with proper CORS headers, URL rewriting, and error handling. Tested with real HLS streams and MP4 files. Backend implementation is solid and ready for frontend integration. The CORS bypass solution is working as intended."
---\ No newline at end of file
+-@@ -1,40 +0,0 @@
+--diff --git a/model.patch b/model.patch
+--index 8dde1a4..e69de29 100644
+----- a/model.patch
+--+++ b/model.patch
+--@@ -1,35 +0,0 @@
+---diff --git a/test_result.md b/test_result.md
+---index 0553abe..06ba8b2 100644
+------ a/test_result.md
+---+++ b/test_result.md
+---@@ -167,15 +167,18 @@ backend:
+--- 
+---   - task: "Video proxy for CORS bypass"
+---     implemented: true
+----    working: "NA"
+---+    working: true
+---     file: "server.py"
+---     stuck_count: 0
+---     priority: "high"
+----    needs_retesting: true
+---+    needs_retesting: false
+---     status_history:
+---       - working: "NA"
+---         agent: "main"
+---         comment: "Implemented /api/proxy/stream and /api/proxy/m3u8 endpoints to proxy video streams and playlists. Uses aiohttp to fetch content server-side and stream back to client. Supports HLS (.m3u8) and direct streams (.ts, .mp4). Needs backend testing."
+---+      - working: true
+---+        agent: "testing"
+---+        comment: "✅ BACKEND TESTING COMPLETE - Both proxy endpoints working correctly. /api/proxy/stream successfully proxies video streams with proper CORS headers. /api/proxy/m3u8 correctly rewrites M3U8 playlists to route all URLs through proxy. Tested with real HLS streams and MP4 files. Error handling works for invalid URLs and malformed base64. Ready for frontend integration testing."
+--- 
+--- frontend:
+---   - task: "Authentication screens (login/register)"
+---@@ -283,4 +286,6 @@ agent_communication:
+---   - agent: "main"
+---     message: "Initial implementation complete with all core features"
+---   - agent: "main"
+----    message: "Implemented video proxy solution. Backend has /api/proxy/stream and /api/proxy/m3u8 endpoints. Frontend player.tsx updated to use getProxyUrl() on web platform. Ready for backend testing with a sample stream URL."
+---\ No newline at end of file
+---+    message: "Implemented video proxy solution. Backend has /api/proxy/stream and /api/proxy/m3u8 endpoints. Frontend player.tsx updated to use getProxyUrl() on web platform. Ready for backend testing with a sample stream URL."
+---+  - agent: "testing"
+---+    message: "✅ BACKEND PROXY TESTING COMPLETE - Video proxy endpoints are fully functional. Both /api/proxy/stream and /api/proxy/m3u8 work correctly with proper CORS headers, URL rewriting, and error handling. Tested with real HLS streams and MP4 files. Backend implementation is solid and ready for frontend integration. The CORS bypass solution is working as intended."
+---\ No newline at end of file
