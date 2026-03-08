@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
-import { useAuthStore } from '../../src/store/auth';
+import { useAuth } from '../../src/contexts/AuthContext';
 import api from '../../src/services/api';
 
 interface Stats {
