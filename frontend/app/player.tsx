@@ -53,7 +53,7 @@ if (Platform.OS !== 'web') {
   }
 }
 
-// Web video player using HTML5 video
+// Web video player using HLS.js for better HLS support
 function WebVideoPlayer({ 
   url, 
   onError, 
@@ -66,12 +66,14 @@ function WebVideoPlayer({
   onPlaybackStatusUpdate: (status: { isPlaying: boolean; isBuffering: boolean }) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
+    // Event handlers
     const handlePlay = () => {
       setIsPlaying(true);
       onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
@@ -93,9 +95,11 @@ function WebVideoPlayer({
     
     const handlePlaying = () => {
       onLoad();
+      onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: false });
     };
     
-    const handleError = () => {
+    const handleError = (e: any) => {
+      console.error('Video error:', e);
       onError('Kunde inte spela strömmen. Kontrollera din internetanslutning.');
     };
 
@@ -106,8 +110,70 @@ function WebVideoPlayer({
     video.addEventListener('playing', handlePlaying);
     video.addEventListener('error', handleError);
 
-    // Try to auto-play
-    video.play().catch(() => {});
+    // Load HLS.js if needed
+    const loadVideo = async () => {
+      if (url.includes('.m3u8')) {
+        // Use HLS.js for M3U8 streams
+        try {
+          const Hls = (await import('hls.js')).default;
+          
+          if (Hls.isSupported()) {
+            const hls = new Hls({
+              enableWorker: true,
+              lowLatencyMode: false,
+              backBufferLength: 90,
+              maxBufferLength: 30,
+              maxMaxBufferLength: 60,
+            });
+            
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              console.log('HLS manifest parsed');
+              video.play().catch(e => console.log('Autoplay prevented:', e));
+            });
+            
+            hls.on(Hls.Events.ERROR, (event, data) => {
+              console.error('HLS error:', data);
+              if (data.fatal) {
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                    console.log('Network error, trying to recover...');
+                    hls.startLoad();
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    console.log('Media error, trying to recover...');
+                    hls.recoverMediaError();
+                    break;
+                  default:
+                    onError('Ett kritiskt fel inträffade vid uppspelning.');
+                    hls.destroy();
+                    break;
+                }
+              }
+            });
+            
+            hlsRef.current = hls;
+          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Native HLS support (Safari)
+            video.src = url;
+            video.play().catch(e => console.log('Autoplay prevented:', e));
+          } else {
+            onError('Din webbläsare stöder inte HLS-streaming.');
+          }
+        } catch (error) {
+          console.error('Failed to load HLS.js:', error);
+          onError('Kunde inte ladda video-spelaren.');
+        }
+      } else {
+        // Direct MP4 or other formats
+        video.src = url;
+        video.play().catch(e => console.log('Autoplay prevented:', e));
+      }
+    };
+
+    loadVideo();
 
     return () => {
       video.removeEventListener('play', handlePlay);
@@ -116,6 +182,12 @@ function WebVideoPlayer({
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('error', handleError);
+      
+      // Cleanup HLS.js
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
     };
   }, [url]);
 
@@ -123,7 +195,6 @@ function WebVideoPlayer({
     <View style={styles.webVideoContainer}>
       <video
         ref={videoRef}
-        src={url}
         style={{
           width: '100%',
           height: '100%',
@@ -132,7 +203,6 @@ function WebVideoPlayer({
         }}
         playsInline
         controls={true}
-        autoPlay
       />
     </View>
   );
