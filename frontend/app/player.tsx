@@ -41,7 +41,7 @@ const getProxyUrl = (originalUrl: string): string => {
   return `/api/proxy/stream?url=${encodedUrl}`;
 };
 
-// Web video player using HLS.js for better HLS support
+// Web video player using Video.js for better HLS support and controls
 function WebVideoPlayer({ 
   url, 
   onError, 
@@ -54,144 +54,128 @@ function WebVideoPlayer({
   onPlaybackStatusUpdate: (status: { isPlaying: boolean; isBuffering: boolean }) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const playerRef = useRef<any>(null);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    if (!videoRef.current) return;
 
-    // Event handlers
-    const handlePlay = () => {
-      setIsPlaying(true);
-      onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
-    };
-    
-    const handlePause = () => {
-      setIsPlaying(false);
-      onPlaybackStatusUpdate({ isPlaying: false, isBuffering: false });
-    };
-    
-    const handleWaiting = () => {
-      onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: true });
-    };
-    
-    const handleCanPlay = () => {
-      onLoad();
-      onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: false });
-    };
-    
-    const handlePlaying = () => {
-      onLoad();
-      onPlaybackStatusUpdate({ isPlaying: isPlaying, isBuffering: false });
-    };
-    
-    const handleError = (e: any) => {
-      console.error('Video error:', e);
-      onError('Kunde inte spela strömmen. Kontrollera din internetanslutning.');
-    };
+    // Dynamically import Video.js (client-side only)
+    const initializePlayer = async () => {
+      try {
+        // Import Video.js and its CSS
+        const videojs = (await import('video.js')).default;
+        await import('video.js/dist/video-js.css');
+        await import('@videojs/http-streaming');
 
-    video.addEventListener('play', handlePlay);
-    video.addEventListener('pause', handlePause);
-    video.addEventListener('waiting', handleWaiting);
-    video.addEventListener('canplay', handleCanPlay);
-    video.addEventListener('playing', handlePlaying);
-    video.addEventListener('error', handleError);
+        // Initialize Video.js player
+        const player = videojs(videoRef.current!, {
+          controls: true,
+          autoplay: true,
+          preload: 'auto',
+          fluid: true,
+          responsive: true,
+          html5: {
+            vhs: {
+              enableLowInitialPlaylist: true,
+              smoothQualityChange: true,
+              overrideNative: true,
+            },
+            nativeAudioTracks: false,
+            nativeVideoTracks: false,
+          },
+        });
 
-    // Load HLS.js if needed
-    const loadVideo = async () => {
-      if (url.includes('.m3u8') || url.includes('/api/proxy/m3u8')) {
-        // Use HLS.js for M3U8 streams
-        try {
-          const Hls = (await import('hls.js')).default;
+        // Set source
+        player.src({
+          src: url,
+          type: url.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4',
+        });
+
+        // Event listeners
+        player.on('loadeddata', () => {
+          console.log('Video loaded');
+          onLoad();
+          onPlaybackStatusUpdate({ isPlaying: false, isBuffering: false });
+        });
+
+        player.on('play', () => {
+          console.log('Video playing');
+          onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
+        });
+
+        player.on('pause', () => {
+          console.log('Video paused');
+          onPlaybackStatusUpdate({ isPlaying: false, isBuffering: false });
+        });
+
+        player.on('waiting', () => {
+          console.log('Video buffering');
+          onPlaybackStatusUpdate({ isPlaying: player.paused(), isBuffering: true });
+        });
+
+        player.on('playing', () => {
+          console.log('Video resumed from buffering');
+          onPlaybackStatusUpdate({ isPlaying: true, isBuffering: false });
+        });
+
+        player.on('error', (e: any) => {
+          const error = player.error();
+          console.error('Video.js error:', error);
+          let errorMessage = 'Kunde inte spela strömmen.';
           
-          if (Hls.isSupported()) {
-            const hls = new Hls({
-              enableWorker: true,
-              lowLatencyMode: false,
-              backBufferLength: 90,
-              maxBufferLength: 30,
-              maxMaxBufferLength: 60,
-            });
-            
-            hls.loadSource(url);
-            hls.attachMedia(video);
-            
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              console.log('HLS manifest parsed');
-              video.play().catch(e => console.log('Autoplay prevented:', e));
-            });
-            
-            hls.on(Hls.Events.ERROR, (event, data) => {
-              console.error('HLS error:', data);
-              if (data.fatal) {
-                switch (data.type) {
-                  case Hls.ErrorTypes.NETWORK_ERROR:
-                    console.log('Network error, trying to recover...');
-                    hls.startLoad();
-                    break;
-                  case Hls.ErrorTypes.MEDIA_ERROR:
-                    console.log('Media error, trying to recover...');
-                    hls.recoverMediaError();
-                    break;
-                  default:
-                    onError('Ett kritiskt fel inträffade vid uppspelning.');
-                    hls.destroy();
-                    break;
-                }
-              }
-            });
-            
-            hlsRef.current = hls;
-          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Native HLS support (Safari)
-            video.src = url;
-            video.play().catch(e => console.log('Autoplay prevented:', e));
-          } else {
-            onError('Din webbläsare stöder inte HLS-streaming.');
+          if (error) {
+            switch (error.code) {
+              case 1:
+                errorMessage = 'Video laddning avbruten.';
+                break;
+              case 2:
+                errorMessage = 'Nätverksfel vid laddning av video.';
+                break;
+              case 3:
+                errorMessage = 'Video-dekodning misslyckades.';
+                break;
+              case 4:
+                errorMessage = 'Video-formatet stöds inte.';
+                break;
+              default:
+                errorMessage = error.message || 'Okänt fel vid uppspelning.';
+            }
           }
-        } catch (error) {
-          console.error('Failed to load HLS.js:', error);
-          onError('Kunde inte ladda video-spelaren.');
-        }
-      } else {
-        // Direct MP4 or other formats
-        video.src = url;
-        video.play().catch(e => console.log('Autoplay prevented:', e));
+          
+          onError(errorMessage);
+        });
+
+        playerRef.current = player;
+
+      } catch (error) {
+        console.error('Failed to initialize Video.js:', error);
+        onError('Kunde inte ladda video-spelaren.');
       }
     };
 
-    loadVideo();
+    initializePlayer();
 
+    // Cleanup
     return () => {
-      video.removeEventListener('play', handlePlay);
-      video.removeEventListener('pause', handlePause);
-      video.removeEventListener('waiting', handleWaiting);
-      video.removeEventListener('canplay', handleCanPlay);
-      video.removeEventListener('playing', handlePlaying);
-      video.removeEventListener('error', handleError);
-      
-      // Cleanup HLS.js
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
+      if (playerRef.current) {
+        playerRef.current.dispose();
+        playerRef.current = null;
       }
     };
   }, [url]);
 
   return (
     <View style={styles.webVideoContainer}>
-      <video
-        ref={videoRef}
-        style={{
-          width: '100%',
-          height: '100%',
-          backgroundColor: '#000',
-          objectFit: 'contain',
-        }}
-        playsInline
-        controls={true}
-      />
+      <div data-vjs-player>
+        <video
+          ref={videoRef}
+          className="video-js vjs-big-play-centered"
+          style={{
+            width: '100%',
+            height: '100%',
+          }}
+        />
+      </div>
     </View>
   );
 }
