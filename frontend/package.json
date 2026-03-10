@@ -44,6 +44,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/native": "^7.1.8",
+    "@videojs/http-streaming": "^3.17.4",
     "axios": "^1.13.4",
     "expo": "54.0.33",
     "expo-av": "^16.0.8",
@@ -73,7 +74,8 @@
     "react-native-screens": "~4.16.0",
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.15.0",
-    "react-native-worklets": "0.5.1"
+    "react-native-worklets": "0.5.1",
+    "video.js": "^8.23.7"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
