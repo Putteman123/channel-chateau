@@ -119,6 +119,15 @@ export function PlayerManager({
             onError={() => handleError()}
           />
         );
+
+      case 'videojs':
+        return (
+          <VideoPlayer
+            {...commonProps}
+            originalStreamUrl={originalStreamUrl}
+            onError={() => handleError()}
+          />
+        );
       
       case 'native':
       case 'shaka':

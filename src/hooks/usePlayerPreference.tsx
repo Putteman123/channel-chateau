@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
-export type PlayerEngine = 'shaka' | 'clappr' | 'native';
+export type PlayerEngine = 'shaka' | 'clappr' | 'native' | 'videojs';
 
 export interface PlayerPreference {
   preferredPlayer: PlayerEngine;
