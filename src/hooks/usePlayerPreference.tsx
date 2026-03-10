@@ -52,7 +52,7 @@ export function usePlayerPreference(): PlayerPreference {
   };
 
   return {
-    preferredPlayer: (profile?.preferred_player as PlayerEngine) || 'shaka',
+    preferredPlayer: (profile?.preferred_player as PlayerEngine) || 'videojs',
     setPreferredPlayer,
     isLoading,
   };
