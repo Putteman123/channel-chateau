@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ShakaPlayer, ShakaPlayerProps } from './ShakaPlayer';
 import { ClapprPlayer } from './ClapprPlayer';
+import { VideoPlayer } from './VideoPlayer';
 import { NativeVideoPlayer } from './NativeVideoPlayer';
 import { ExternalPlayerOptions } from './ExternalPlayerOptions';
 import { usePlayerPreference, PlayerEngine } from '@/hooks/usePlayerPreference';
@@ -116,6 +117,14 @@ export function PlayerManager({
           <ClapprPlayer
             {...commonProps}
             onError={() => handleError()}
+          />
+        );
+
+      case 'videojs':
+        return (
+          <VideoPlayer
+            {...commonProps}
+            originalStreamUrl={originalStreamUrl}
           />
         );
       

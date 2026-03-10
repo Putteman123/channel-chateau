@@ -19,8 +19,13 @@ const playerOptions: { value: PlayerEngine; label: string; description: string }
     description: 'Googles OTT-spelare med stabil HLS-support',
   },
   {
+    value: 'videojs',
+    label: 'Video.js (Rekommenderad)',
+    description: 'Robust HLS/MPEG-TS-spelare med bred kompatibilitet',
+  },
+  {
     value: 'clappr',
-    label: 'Clappr (Rekommenderas för IPTV)',
+    label: 'Clappr',
     description: 'Bättre för vissa IPTV-strömmar och äldre format',
   },
   {

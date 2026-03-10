@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar, Wand2, Tv, Film, Clapperboard, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, Trash2, Wifi, WifiOff, CheckCircle, XCircle, Pencil, List, Radio, Calendar, Wand2, Tv, Film, Clapperboard } from 'lucide-react';
 import { useStreamSources, StreamSource, SourceType } from '@/hooks/useStreamSources';
 import { useM3UChannelCount } from '@/hooks/useM3UChannelCount';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -159,8 +158,6 @@ export default function Sources() {
 
   const [lastAuthResult, setLastAuthResult] = useState<XtreamAPI.XtreamAuthInfo | null>(null);
 
-  const [lastTestError, setLastTestError] = useState<string | null>(null);
-
   const testXtreamConnection = async () => {
     const values = xtreamForm.getValues();
     if (!values.server_url || !values.username || !values.password) {
@@ -171,7 +168,6 @@ export default function Sources() {
     setIsTestingConnection(true);
     setConnectionStatus('idle');
     setLastAuthResult(null);
-    setLastTestError(null);
 
     try {
       const authResult = await XtreamAPI.authenticate({
@@ -185,8 +181,7 @@ export default function Sources() {
     } catch (error: unknown) {
       setConnectionStatus('error');
       const message = error instanceof Error ? error.message : 'Okänt fel';
-      setLastTestError(message);
-      toast.error('Anslutning misslyckades');
+      toast.error('Anslutning misslyckades: ' + message);
     } finally {
       setIsTestingConnection(false);
     }
@@ -483,13 +478,13 @@ export default function Sources() {
                       )}
                     />
 
-                    <div className="space-y-2">
+                    <div className="flex gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         onClick={testXtreamConnection}
                         disabled={isTestingConnection}
-                        className="gap-2 w-full"
+                        className="gap-2"
                       >
                         {isTestingConnection ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -502,16 +497,6 @@ export default function Sources() {
                         )}
                         Testa anslutning
                       </Button>
-
-                      {connectionStatus === 'error' && lastTestError && (
-                        <Alert variant="destructive">
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertTitle>Anslutningsfel</AlertTitle>
-                          <AlertDescription className="text-xs whitespace-pre-wrap">
-                            {lastTestError}
-                          </AlertDescription>
-                        </Alert>
-                      )}
                     </div>
 
                     <Button
@@ -712,13 +697,13 @@ export default function Sources() {
                   )}
                 />
 
-                <div className="space-y-2">
+                <div className="flex gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={testXtreamConnection}
                     disabled={isTestingConnection}
-                    className="gap-2 w-full"
+                    className="gap-2"
                   >
                     {isTestingConnection ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -731,16 +716,6 @@ export default function Sources() {
                     )}
                     Testa anslutning
                   </Button>
-
-                  {connectionStatus === 'error' && lastTestError && (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Anslutningsfel</AlertTitle>
-                      <AlertDescription className="text-xs whitespace-pre-wrap">
-                        {lastTestError}
-                      </AlertDescription>
-                    </Alert>
-                  )}
                 </div>
 
                 <Button
