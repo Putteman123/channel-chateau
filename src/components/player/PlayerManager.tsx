@@ -125,7 +125,6 @@ export function PlayerManager({
           <VideoPlayer
             {...commonProps}
             originalStreamUrl={originalStreamUrl}
-            onError={() => handleError()}
           />
         );
       
