@@ -1,7 +1,36 @@
 {
-  "name": "frontend",
-  "main": "expo-router/entry",
+  "name": "streamify",
   "version": "1.0.0",
+  "description": "Modern IPTV streaming application with Expo, FastAPI, and MongoDB. Supports unlimited content scaling, multiple playlists (M3U, Xtream Codes), HLS video streaming with proxy, and cross-platform support (iOS, Android, Web)",
+  "keywords": [
+    "iptv",
+    "streaming",
+    "expo",
+    "react-native",
+    "fastapi",
+    "mongodb",
+    "hls",
+    "video-player",
+    "m3u",
+    "xtream-codes",
+    "cross-platform",
+    "mobile-app",
+    "video-streaming",
+    "live-tv",
+    "movies",
+    "series"
+  ],
+  "author": "Streamify Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/streamify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/streamify/issues"
+  },
+  "homepage": "https://github.com/yourusername/streamify#readme",
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
