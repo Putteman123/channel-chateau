@@ -16,11 +16,13 @@
 - **Expo Go**: Direkttestning under utveckling
 
 ### 🎥 Avancerad Videostreaming
-- **HLS.js Integration**: Professionell HLS-streaming i webbläsare
+- **Video.js Integration**: Professionell video-spelare med inbyggda kontroller
+- **HLS HTTP Streaming**: Inbyggt stöd för HLS (HTTP Live Streaming)
 - **Video Proxy**: Backend-proxy för CORS-bypass (`/api/proxy/stream`, `/api/proxy/m3u8`)
 - **Adaptiv Bitrate**: Automatisk kvalitetsjustering
 - **Auto-Recovery**: Hanterar nätverksavbrott automatiskt
 - **Multiple Formats**: Stöd för M3U8, MP4, TS och fler format
+- **Rich Controls**: Play/pause, volym, fullscreen, timeline scrubbing
 
 ### 📺 Innehållshantering
 - **Unlimited Scaling**: Hanterar hundratusentals kanaler, filmer och serier
