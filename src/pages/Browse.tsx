@@ -66,21 +66,33 @@ export default function Browse() {
 
   const { data: liveChannels, isLoading: loadingChannels, error: channelsError, refetch: refetchChannels } = useQuery({
     queryKey: ['live-channels', credentials?.serverUrl],
-    queryFn: () => credentials ? XtreamAPI.getLiveStreams(credentials) : [],
+    queryFn: async () => {
+      if (!credentials) return [];
+      const res = await XtreamAPI.getLiveStreams(credentials);
+      return Array.isArray(res) ? res : [];
+    },
     enabled: !!credentials,
     staleTime: 3 * 24 * 60 * 60 * 1000,
   });
 
   const { data: movies, isLoading: loadingMovies, error: moviesError, refetch: refetchMovies } = useQuery({
     queryKey: ['movies', credentials?.serverUrl],
-    queryFn: () => credentials ? XtreamAPI.getVodStreams(credentials) : [],
+    queryFn: async () => {
+      if (!credentials) return [];
+      const res = await XtreamAPI.getVodStreams(credentials);
+      return Array.isArray(res) ? res : [];
+    },
     enabled: !!credentials,
     staleTime: 3 * 24 * 60 * 60 * 1000,
   });
 
   const { data: series, isLoading: loadingSeries, error: seriesError, refetch: refetchSeries } = useQuery({
     queryKey: ['series', credentials?.serverUrl],
-    queryFn: () => credentials ? XtreamAPI.getSeries(credentials) : [],
+    queryFn: async () => {
+      if (!credentials) return [];
+      const res = await XtreamAPI.getSeries(credentials);
+      return Array.isArray(res) ? res : [];
+    },
     enabled: !!credentials,
     staleTime: 3 * 24 * 60 * 60 * 1000,
   });
